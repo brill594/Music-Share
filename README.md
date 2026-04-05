@@ -1,6 +1,6 @@
 # Music Share
 
-Music Share 是一套临时音频分享工具，包含：
+Music Share 是一套为Poweramp设计的临时音频分享工具，包含：
 
 - Android 客户端：选择音频、上传元数据、管理自己的分享
 - 后端服务：鉴权、会话管理、分享查询、音频分发、过期清理
@@ -172,15 +172,5 @@ sudo bash ./start.sh stop
 - 后端当前依赖 SQLite 和本地文件系统，不是无状态架构
 - 音频分发默认依赖 Nginx `X-Accel-Redirect`
 - 更适合同机部署前端静态资源与后端 API
-- 如果使用 IP 地址证书，需要较新的 `certbot`
+- 如果使用 IP 地址证书，需要`certbot`>5.3
 
-## 适用场景
-
-这套实现更适合：
-
-- 自用
-- 小规模分享
-- 低频访问
-- 单机部署
-
-如果后续需要迁移到 Cloudflare Workers / R2 / D1，这个仓库的前端部分可复用，但后端需要做存储和运行模型重构。
