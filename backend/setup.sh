@@ -12,11 +12,13 @@ LE_BASE_DIR="${SETUP_DATA_DIR}/letsencrypt"
 LE_CONFIG_DIR="${LE_BASE_DIR}/config"
 LE_WORK_DIR="${LE_BASE_DIR}/work"
 LE_LOGS_DIR="${LE_BASE_DIR}/logs"
+CLOUDFLARE_CREDENTIALS_FILE="${LE_BASE_DIR}/cloudflare.ini"
 ENV_FILE="${SCRIPT_DIR}/.env"
 BACKEND_UPSTREAM_HOST="${MUSIC_SHARE_BACKEND_HOST:-127.0.0.1}"
 BACKEND_UPSTREAM_PORT="${MUSIC_SHARE_BACKEND_PORT:-2087}"
 SITE_NAME="${MUSIC_SHARE_NGINX_SITE_NAME:-music-share.conf}"
 CERTBOT_MODE="${MUSIC_SHARE_CERTBOT_MODE:-auto}"
+CLOUDFLARE_PROPAGATION_SECONDS="${MUSIC_SHARE_CLOUDFLARE_PROPAGATION_SECONDS:-30}"
 DOMAIN_CHECK_PATH="/.well-known/music-share-domain-check.txt"
 
 NGINX_BIN=""
@@ -64,10 +66,10 @@ ensure_linux() {
 
 validate_certbot_mode() {
     case "${CERTBOT_MODE}" in
-        auto|webroot|standalone)
+        auto|webroot|standalone|dns-cloudflare)
             ;;
         *)
-            fail "unsupported certbot mode: ${CERTBOT_MODE}, expected auto, webroot or standalone"
+            fail "unsupported certbot mode: ${CERTBOT_MODE}, expected auto, webroot, standalone or dns-cloudflare"
             ;;
     esac
 }
@@ -87,9 +89,15 @@ install_dependencies() {
         log "installing nginx and certbot with apt-get"
         run_root apt-get update
         run_root apt-get install -y nginx certbot curl
+        if ! run_root apt-get install -y python3-certbot-dns-cloudflare; then
+            log "optional package python3-certbot-dns-cloudflare not installed; dns-cloudflare mode will require manual plugin installation"
+        fi
     elif command_exists dnf; then
         log "installing nginx and certbot with dnf"
         run_root dnf install -y nginx certbot curl
+        if ! run_root dnf install -y python3-certbot-dns-cloudflare; then
+            log "optional package python3-certbot-dns-cloudflare not installed; dns-cloudflare mode will require manual plugin installation"
+        fi
     else
         fail "unsupported Linux package manager, expected apt-get or dnf"
     fi
@@ -159,6 +167,24 @@ prompt_value() {
     fi
 }
 
+prompt_secret_value() {
+    local prompt_text="$1"
+    local current_value="$2"
+    local answer=""
+    if [[ -n "${current_value}" ]]; then
+        printf '%s [已存在，回车复用]: ' "${prompt_text}" >&2
+    else
+        printf '%s: ' "${prompt_text}" >&2
+    fi
+    read -r -s answer
+    printf '\n' >&2
+    if [[ -n "${answer}" ]]; then
+        printf '%s' "${answer}"
+    else
+        printf '%s' "${current_value}"
+    fi
+}
+
 normalize_domain_input() {
     local value="$1"
 
@@ -191,6 +217,51 @@ prepare_nginx_layout() {
 ensure_acme_webroot_permissions() {
     mkdir -p "${ACME_WEBROOT}/.well-known" "${ACME_CHALLENGE_DIR}"
     chmod 755 "${ACME_WEBROOT}" "${ACME_WEBROOT}/.well-known" "${ACME_CHALLENGE_DIR}"
+}
+
+extract_cloudflare_token_from_file() {
+    if [[ ! -f "${CLOUDFLARE_CREDENTIALS_FILE}" ]]; then
+        return
+    fi
+
+    awk -F '=' '
+        $1 ~ /^[[:space:]]*dns_cloudflare_api_token[[:space:]]*$/ {
+            value = $2
+            sub(/^[[:space:]]+/, "", value)
+            sub(/[[:space:]]+$/, "", value)
+            print value
+            exit
+        }
+    ' "${CLOUDFLARE_CREDENTIALS_FILE}"
+}
+
+ensure_certbot_dns_cloudflare_plugin() {
+    if "${CERTBOT_BIN}" plugins 2>/dev/null | grep -q 'dns-cloudflare'; then
+        return
+    fi
+
+    fail "certbot dns-cloudflare plugin not found; please install python3-certbot-dns-cloudflare and rerun"
+}
+
+ensure_cloudflare_credentials() {
+    local token="${MUSIC_SHARE_CLOUDFLARE_API_TOKEN:-}"
+
+    if [[ -z "${token}" ]]; then
+        token="$(extract_cloudflare_token_from_file)"
+    fi
+
+    if [[ -z "${token}" ]]; then
+        token="$(prompt_secret_value "请输入 Cloudflare API Token（用于 DNS-01）" "")"
+    fi
+
+    [[ -n "${token}" ]] || fail "Cloudflare API Token is required for dns-cloudflare mode"
+
+    mkdir -p "$(dirname "${CLOUDFLARE_CREDENTIALS_FILE}")"
+    cat > "${CLOUDFLARE_CREDENTIALS_FILE}" <<EOF
+dns_cloudflare_api_token = ${token}
+EOF
+    chmod 600 "${CLOUDFLARE_CREDENTIALS_FILE}"
+    log "cloudflare credentials file ready: ${CLOUDFLARE_CREDENTIALS_FILE}"
 }
 
 write_http_only_conf() {
@@ -465,6 +536,15 @@ verify_domain_reaches_nginx() {
     log "domain validation passed: ${domain} is reaching this nginx instance"
 }
 
+log_certbot_failure_guidance() {
+    log "certificate request failed in webroot, standalone and dns-cloudflare modes"
+    log "this usually means the domain or Cloudflare token configuration still has an issue"
+    log "please check upstream WAF/CDN/reverse proxy/FRP/load balancer settings for the domain"
+    log "also confirm DNS A/AAAA records only point to this server"
+    log "if the domain is behind an HTTP proxy, disable the proxy during certificate issuance or use dns-cloudflare mode"
+    log "for Cloudflare DNS, make sure the API token has Zone.DNS Edit and Zone.Zone Read permissions for the target zone"
+}
+
 run_certbot_once() {
     local mode="$1"
     local domain="$2"
@@ -491,6 +571,16 @@ run_certbot_once() {
             if stop_nginx_if_running; then
                 nginx_was_running="true"
             fi
+            ;;
+        dns-cloudflare)
+            ensure_certbot_dns_cloudflare_plugin
+            ensure_cloudflare_credentials
+            certbot_args+=(
+                --dns-cloudflare
+                --dns-cloudflare-credentials "${CLOUDFLARE_CREDENTIALS_FILE}"
+                --dns-cloudflare-propagation-seconds "${CLOUDFLARE_PROPAGATION_SECONDS}"
+                --preferred-challenges dns-01
+            )
             ;;
     esac
 
@@ -526,9 +616,17 @@ run_certbot() {
                 return 0
             fi
             log "webroot certbot failed, retrying with standalone mode"
-            run_certbot_once standalone "${domain}" "${email}"
+            if run_certbot_once standalone "${domain}" "${email}"; then
+                return 0
+            fi
+            log "standalone certbot failed, retrying with dns-cloudflare mode"
+            if run_certbot_once dns-cloudflare "${domain}" "${email}"; then
+                return 0
+            fi
+            log_certbot_failure_guidance
+            return 1
             ;;
-        webroot|standalone)
+        webroot|standalone|dns-cloudflare)
             run_certbot_once "${CERTBOT_MODE}" "${domain}" "${email}"
             ;;
     esac
