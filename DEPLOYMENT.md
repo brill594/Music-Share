@@ -1,174 +1,327 @@
-# Music Share 使用与部署
-
-本仓库当前只支持 Cloudflare 架构：
+# Music Share 部署说明
 
 - `backend/` 部署到 Cloudflare Workers
 - `web-player/` 部署到 Cloudflare Pages
 - `D1` 保存分享和会话数据
 - `R2` 保存音频与封面对象
 
-不再保留旧的单机部署链路。
+## 先理解 4 类配置
 
-## 仓库结构
+### 1. `wrangler.toml`
 
-- `android-app/` Android 客户端
-- `backend/` Worker 后端
-- `web-player/` 公开试听前端
+这是 Cloudflare Worker 的部署配置文件，放在 [backend/wrangler.toml](/Users/brilliant/repo/Music%20Share_Worker/backend/wrangler.toml)。
 
-## 日常使用
+这里通常放：
 
-### 本地开发
+- Worker 名称
+- D1 binding
+- R2 binding
+- Cron 配置
+- 一些默认的非敏感配置
 
-后端：
+这里不该放：
 
-```bash
-cd backend
-npm install
-npm run typecheck
-npm test
-npm run dev
-```
+- 密码
+- Cloudflare API token
 
-前端：
+### 2. GitHub Repository Secrets
 
-```bash
-cd web-player
-npm install
-cp .env.example .env.local
-npm run dev
-```
+这是 GitHub 仓库级别的 secret，整个仓库的 workflow 都能用。
 
-前端本地联调时，`.env.local` 至少需要：
+适合放：
 
-```env
-VITE_API_BASE_URL=http://localhost:8787/
-```
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `MUSIC_SHARE_USER_PASSWORD`
+- `MUSIC_SHARE_ADMIN_PASSWORD`
 
-Android：
+如果你现在只是想先跑通自动部署，初学者最推荐直接用 `Repository Secrets`。
 
-```bash
-cd android-app
-./gradlew :app:assembleDebug
-```
+### 3. GitHub Environment Secrets
 
-### 本地联调顺序
+这是 GitHub Environment 级别的 secret，例如你可以建一个 `production` environment，再把生产密钥放进去。
 
-1. 先启动 `backend` 的 `wrangler dev`
-2. 再启动 `web-player` 的 Vite 开发服务器
-3. 确认页面能通过 `VITE_API_BASE_URL` 访问到本地 Worker
+适合场景：
 
-## 部署架构
+- 你想区分 `staging` 和 `production`
+- 你想给生产部署加审批
+- 你想把生产密钥和普通仓库级密钥分开
+
+如果你还不熟 GitHub Actions，可以先不使用它，先只用 `Repository Secrets`。
+
+注意：
+
+- 这里的 `environment` 是 GitHub 的部署环境，不是 `.env` 文件
+- 私有仓库能不能用 environment，取决于你的 GitHub 套餐
+
+### 4. GitHub Variables
+
+Variables 用来放非敏感配置。
+
+适合放：
+
+- `MUSIC_SHARE_PUBLIC_API_BASE_URL`
+- `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
+- `VITE_API_BASE_URL`
+- `CLOUDFLARE_PAGES_PROJECT_NAME`
+
+不适合放：
+
+- 密码
+- token
+
+## 初学者推荐方案
+
+如果你是第一次部署，建议直接这样分：
+
+- `wrangler.toml`
+  - D1 / R2 binding
+  - Cron
+- `Repository Secrets`
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+  - `MUSIC_SHARE_USER_PASSWORD`
+  - `MUSIC_SHARE_ADMIN_PASSWORD`
+- `Repository Variables`
+  - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
+  - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
+  - `CLOUDFLARE_PAGES_PROJECT_NAME`
+  - `VITE_API_BASE_URL`
+
+如果你以后想升级，再把生产密钥迁到 `Environment Secrets`。
+
+## 部署前你要准备什么
+
+至少准备这些：
+
+- 一个 Cloudflare 账号
+- 一个 D1 数据库
+- 一个 R2 bucket
+- 一个 Cloudflare Pages 项目
+- 一个后端域名，例如 `api.example.com`
+- 一个前端域名，例如 `share.example.com`
+- 一个 GitHub 仓库
 
 推荐域名拆分：
 
-- `api.example.com` 对应 Worker
-- `share.example.com` 或 `music.example.com` 对应 Pages
+- `api.example.com` 给 Worker
+- `share.example.com` 或 `music.example.com` 给 Pages
 
-后端需要提供公开地址：
+## 第一步：创建 Cloudflare 资源
 
-- `MUSIC_SHARE_PUBLIC_API_BASE_URL=https://api.example.com`
-- `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL=https://share.example.com`
+### 1. 创建 D1
 
-前端需要提供公开地址：
+可以在 Cloudflare 控制台创建，也可以用 Wrangler：
+
+```bash
+cd backend
+npx wrangler d1 create music-share-backend
+```
+
+创建后会拿到两类值：
+
+- `database_name`
+- `database_id`
+
+这里的 `database_id` 就是 D1 的 UUID。
+
+### 2. 创建 R2
+
+```bash
+cd backend
+npx wrangler r2 bucket create music-share-backend
+```
+
+R2 这里主要需要：
+
+- `bucket_name`
+
+### 3. 创建 Pages 项目
+
+在 Cloudflare Pages 控制台创建一个项目，项目名例如：
+
+- `music-share-web-player`
+
+后面 GitHub Actions 会用到这个项目名。
+
+如果你是在 Cloudflare Pages 控制台里手动创建项目，界面上通常会让你填写这些项：
+
+- 项目名称：
+  - `music-share-web-player`
+- 生产分支：
+  - `cloud`
+  - 如果你准备以后用 `main` 发布正式版，那这里就填 `main`
+- 框架预设：
+  - `无`
+- 构建命令：
+  - `npm run build`
+- 构建输出目录：
+  - `dist`
+
+如果界面里还有“根目录 / Root directory”，这个项目应填：
+
+- `web-player`
+
+如果界面里有环境变量，至少填：
 
 - `VITE_API_BASE_URL=https://api.example.com/`
 
-## Cloudflare 部署步骤
+注意两点：
 
-### 1. 创建 D1 和 R2
+1. 这里的“项目名称”要和 GitHub Variable `CLOUDFLARE_PAGES_PROJECT_NAME` 一致。
+2. 如果你已经使用本仓库的 GitHub Actions 通过 `wrangler pages deploy` 直传部署，那么 Cloudflare 控制台里的构建命令和输出目录主要是“创建项目时要填的基础信息”，后续正式部署通常由 GitHub Actions 里的构建结果接管。
 
-先在 Cloudflare 中准备：
+## 第二步：填写 `wrangler.toml`
 
-- 一个 D1 数据库
-- 一个 R2 bucket
+把 D1 / R2 的 binding 写进 [backend/wrangler.toml](/Users/brilliant/repo/Music%20Share_Worker/backend/wrangler.toml)。
 
-然后把真实值填入 [backend/wrangler.toml](/Users/brilliant/repo/Music%20Share_Worker/backend/wrangler.toml)：
+你至少要改这些值：
 
 - `[[d1_databases]].database_id`
 - `[[d1_databases]].database_name`
 - `[[r2_buckets]].bucket_name`
 
-### 2. 配置 Worker 密钥和变量
+这些值保存在文件里是正常的，因为它们属于部署绑定，不是密码。
 
-必须配置的密钥：
+换句话说：
 
+- `database_id`、`bucket_name` 可以进仓库
+- `password`、`token` 不应该进仓库
+
+## 第三步：在 GitHub 里配置 Secrets 和 Variables
+
+路径：
+
+- `Settings`
+- `Secrets and variables`
+- `Actions`
+
+### 1. Repository Secrets
+
+至少添加：
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
 - `MUSIC_SHARE_USER_PASSWORD`
 - `MUSIC_SHARE_ADMIN_PASSWORD`
 
-不要把这两个值写进 `wrangler.toml` 或提交到仓库。
+其中 `CLOUDFLARE_API_TOKEN` 不建议直接给过大的权限。按当前仓库的两个 workflow，建议至少授予这些 Account 级权限：
 
-最简单的做法是直接写入 Cloudflare Worker secret：
+- `Workers Scripts Edit`
+- `D1 Edit`
+- `Workers R2 Storage Edit`
+- `Cloudflare Pages Edit`
 
-```bash
-cd backend
-npx wrangler secret put MUSIC_SHARE_USER_PASSWORD
-npx wrangler secret put MUSIC_SHARE_ADMIN_PASSWORD
-```
+如果你想更方便排查问题，也可以额外给只读权限：
 
-公开地址建议同时写入 Worker 环境变量：
+- `Workers Scripts Read`
+- `D1 Read`
+- `Workers R2 Storage Read`
+- `Cloudflare Pages Read`
+
+一般不需要额外给：
+
+- `Zone DNS Edit`
+- `SSL and Certificates Edit`
+- `Workers Routes Edit`
+
+前提是你已经在 Cloudflare 控制台里提前创建并配置好了：
+
+- D1
+- R2
+- Pages 项目
+- 自定义域名和 DNS
+
+这样 GitHub Actions 只负责“部署代码”，不负责“改域名配置”。
+
+### 2. Repository Variables
+
+至少添加：
 
 - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
 - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
+- `CLOUDFLARE_PAGES_PROJECT_NAME`
+- `VITE_API_BASE_URL`
 
-`wrangler.toml` 中已经内置了这些默认变量：
+一个常见示例：
 
-- `MUSIC_SHARE_SESSION_TTL_SECONDS`
-- `MUSIC_SHARE_SHARE_DEFAULT_TTL_SECONDS`
-- `MUSIC_SHARE_SHARE_MAX_TTL_SECONDS`
-- `MUSIC_SHARE_MAX_AUDIO_UPLOAD_BYTES`
-- `MUSIC_SHARE_MAX_COVER_UPLOAD_BYTES`
-- `MUSIC_SHARE_MAX_DURATION_MS`
-- `MUSIC_SHARE_SESSION_COOKIE_NAME`
+```text
+MUSIC_SHARE_PUBLIC_API_BASE_URL=https://api.example.com
+MUSIC_SHARE_PUBLIC_SHARE_BASE_URL=https://share.example.com
+CLOUDFLARE_PAGES_PROJECT_NAME=music-share-web-player
+VITE_API_BASE_URL=https://api.example.com/
+```
 
-### 2.1 用 GitHub Actions secrets 管理更合适
+### 3. 如果你想用 Environment Secrets
 
-如果你通过 GitHub Actions 自动部署，推荐这样分层：
+这不是必须的。
 
-- GitHub Actions Secrets：
-  - `CLOUDFLARE_API_TOKEN`
-  - `CLOUDFLARE_ACCOUNT_ID`
-  - `MUSIC_SHARE_USER_PASSWORD`
-  - `MUSIC_SHARE_ADMIN_PASSWORD`
-- GitHub Actions Variables：
-  - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
-  - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
+如果你以后要给生产环境加保护，可以：
 
-仓库里已经补了 workflow：
+1. 在 GitHub 创建一个 `production` environment
+2. 把生产 secrets 放进去
+3. 给 environment 配审批规则
 
-- [.github/workflows/deploy-backend.yml](/Users/brilliant/repo/Music%20Share_Worker/.github/workflows/deploy-backend.yml)
+但对第一次部署来说，不需要先做这一步。
 
-当前触发方式：
+## 第四步：启用 GitHub Actions 自动部署
 
-- push 到 `main`
-- push 到 `cloud`
-- 手动 `workflow_dispatch`
+仓库里已经有两个 workflow：
 
-推荐原则：
+- 后端 Worker 部署：
+  - [.github/workflows/deploy-backend.yml](/Users/brilliant/repo/Music%20Share_Worker/.github/workflows/deploy-backend.yml)
+- 前端 Pages 部署：
+  - [.github/workflows/deploy-web-player.yml](/Users/brilliant/repo/Music%20Share_Worker/.github/workflows/deploy-web-player.yml)
 
-- 真正的密钥和密码放 `Secrets`
-- 公开域名、bucket 名、环境名这类非敏感值放 `Variables` 或 `wrangler.toml`
+### 后端 workflow 会做什么
 
-这个 workflow 会自动做这些事：
+它会：
 
 1. `npm ci`
 2. `npm run typecheck`
 3. `npm test`
 4. `wrangler d1 migrations apply MUSIC_SHARE_DB --yes`
 5. `wrangler deploy`
-6. 把 GitHub Secrets / Variables 同步成 Worker 运行时 secret
 
-启用前至少要在 GitHub 仓库设置中补齐：
+默认触发：
 
-- Repository Secrets:
-  - `CLOUDFLARE_API_TOKEN`
-  - `CLOUDFLARE_ACCOUNT_ID`
-  - `MUSIC_SHARE_USER_PASSWORD`
-  - `MUSIC_SHARE_ADMIN_PASSWORD`
-- Repository Variables:
-  - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
-  - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
+- push 到 `main`
+- push 到 `cloud`
+- 手动触发 `workflow_dispatch`
 
-### 3. 执行 D1 迁移
+### 前端 workflow 会做什么
+
+它会：
+
+1. `npm ci`
+2. `npm run typecheck`
+3. `npm run build`
+4. `wrangler pages deploy dist ...`
+
+默认触发：
+
+- push 到 `main`
+- push 到 `cloud`
+- 对 `main/cloud` 的 pull request
+- 手动触发 `workflow_dispatch`
+
+说明：
+
+- 同仓库 PR 会尝试做 Pages preview
+- fork PR 只跑构建检查，不会拿你的 Cloudflare secrets 去部署
+
+## 第五步：后端部署
+
+### 1. 本地先验证一次
+
+```bash
+cd backend
+npm install
+npm run typecheck
+npm test
+```
+
+### 2. 本地执行一次迁移也可以
 
 本地开发数据库：
 
@@ -177,200 +330,140 @@ cd backend
 npx wrangler d1 migrations apply MUSIC_SHARE_DB --local
 ```
 
-远端正式环境：
+正式环境迁移通常会由 GitHub Actions 自动执行。
 
-```bash
-cd backend
-npx wrangler d1 migrations apply MUSIC_SHARE_DB
-```
+### 3. 推送代码触发部署
 
-### 4. 部署 Worker
+把改动 push 到 `main` 或 `cloud`，后端 workflow 会自动部署。
 
-```bash
-cd backend
-npm install
-npm run deploy
-```
+如果你不想等自动触发，也可以在 GitHub Actions 页面手动运行。
 
-部署完成后，优先验证这些接口：
-
-- `POST /auth/login`
-- `POST /upload`
-- `GET /track/{share_code}`
-- `GET /stream/{share_code}`
-- `GET /cover/{share_code}`
-
-## 后端部署细节
-
-这一节只展开 `backend/` 的上线步骤，便于和前端发布顺序配合。
-
-### 1. 安装依赖
-
-```bash
-cd backend
-npm install
-```
-
-### 2. 准备 Cloudflare 资源
-
-至少需要：
-
-- 一个 D1 数据库
-- 一个 R2 bucket
-
-然后把真实值写入 [backend/wrangler.toml](/Users/brilliant/repo/Music%20Share_Worker/backend/wrangler.toml)：
-
-- `[[d1_databases]].database_id`
-- `[[d1_databases]].database_name`
-- `[[r2_buckets]].bucket_name`
-
-### 3. 配置 Worker 密钥
-
-必须配置：
-
-- `MUSIC_SHARE_USER_PASSWORD`
-- `MUSIC_SHARE_ADMIN_PASSWORD`
-
-建议同时配置公开地址：
-
-- `MUSIC_SHARE_PUBLIC_API_BASE_URL`
-- `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
-
-密码不要明文写在仓库里。推荐优先级：
-
-1. GitHub Actions Secrets 或其他 CI secret manager
-2. Cloudflare Worker secrets
-3. 本地人工执行 `wrangler secret put`
-
-如果你已经启用了上面的 GitHub Actions workflow，这两个密码和公开地址会由 workflow 自动同步到 Worker，不需要再手工执行。
-
-手工方式示例：
-
-```bash
-cd backend
-npx wrangler secret put MUSIC_SHARE_USER_PASSWORD
-npx wrangler secret put MUSIC_SHARE_ADMIN_PASSWORD
-npx wrangler secret put MUSIC_SHARE_PUBLIC_API_BASE_URL
-npx wrangler secret put MUSIC_SHARE_PUBLIC_SHARE_BASE_URL
-```
-
-### 4. 执行 D1 迁移
-
-本地开发库：
-
-```bash
-cd backend
-npx wrangler d1 migrations apply MUSIC_SHARE_DB --local
-```
-
-正式环境：
-
-```bash
-cd backend
-npx wrangler d1 migrations apply MUSIC_SHARE_DB
-```
-
-### 5. 发布前校验
-
-```bash
-cd backend
-npm run typecheck
-npm test
-```
-
-### 6. 部署后端
-
-```bash
-cd backend
-npm run deploy
-```
-
-### 7. 后端上线后检查
+### 4. 后端部署完成后检查
 
 至少检查：
 
-- Worker 自定义域名是否已生效
-- D1 查询是否正常
-- R2 上传与读取是否正常
-- Cron Trigger 是否存在
-- `track_url`、`stream_url`、`cover_url`、`share_url` 是否返回正确域名
+- Worker 自定义域名是否生效
+- `POST /auth/login` 能正常返回
+- `POST /upload` 能写入 D1 和 R2
+- `GET /track/{share_code}` 能返回元数据
+- `GET /stream/{share_code}` 能返回音频
+- `GET /cover/{share_code}` 行为正确
+- `track_url`、`stream_url`、`cover_url`、`share_url` 的域名正确
 
-## 前端部署细节
+## 第六步：前端部署
 
-这一节展开 `web-player/` 的上线步骤，并和后端部署顺序配合。
-
-### 1. 配置 Pages 环境变量
-
-Pages 推荐配置：
-
-- Framework preset: `None`
-- Build command: `npm run build`
-- Build output directory: `dist`
-
-Pages 环境变量至少需要：
-
-```env
-VITE_API_BASE_URL=https://api.example.com/
-```
-
-如果通过 GitHub Actions 自动部署 Pages，仓库里已经补了：
-
-- [.github/workflows/deploy-web-player.yml](/Users/brilliant/repo/Music%20Share_Worker/.github/workflows/deploy-web-player.yml)
-
-这个 workflow 的必需配置是：
-
-- Repository Secrets:
-  - `CLOUDFLARE_API_TOKEN`
-  - `CLOUDFLARE_ACCOUNT_ID`
-- Repository Variables:
-  - `CLOUDFLARE_PAGES_PROJECT_NAME`
-  - `VITE_API_BASE_URL`
-
-当前触发方式：
-
-- push 到 `main`
-- push 到 `cloud`
-- 面向 `main/cloud` 的 pull request 会生成 Pages preview
-- 手动 `workflow_dispatch`
-
-注意：
-
-- `CLOUDFLARE_PAGES_PROJECT_NAME` 必须是已经创建好的 Pages 项目名
-- Pages 项目的 production branch 应与你实际用来发正式版的分支一致，例如 `main` 或 `cloud`
-
-### 2. 构建前端
-
-构建前端：
+### 1. 本地先验证一次
 
 ```bash
 cd web-player
 npm install
+npm run typecheck
 npm run build
 ```
 
-`web-player/public/_redirects` 已经提供了 SPA fallback，部署时应随 `dist/` 一起发布。
+### 2. 确认 `VITE_API_BASE_URL`
 
-### 3. 验证分享页
+GitHub Variable `VITE_API_BASE_URL` 必须指向正式后端域名，例如：
 
-部署完成后至少验证：
+```text
+https://api.example.com/
+```
 
-- 直接打开 `/{shareCode}` 能进入页面
-- 刷新 `/{shareCode}` 不会返回静态 404
-- `GET /track/{share_code}` 返回 `200` 时页面能完成音频下载并播放
-- `GET /track/{share_code}` 返回 `404` 时进入前端 Not Found 页面
-- `GET /track/{share_code}` 返回 `410` 时进入前端 Expired 页面
-- `stream_url` 或 `cover_url` 异常时页面显示错误，不误判为分享不存在
+如果你在 Cloudflare Pages 控制台也配置了同名环境变量，建议和 GitHub Variable 保持一致。
 
-## 部署顺序建议
+### 3. 推送代码触发部署
 
-结合前端说明，推荐按这个顺序部署：
+把改动 push 到 `main` 或 `cloud`，前端 workflow 会自动部署到 Pages。
 
-1. 先准备后端依赖资源：D1、R2、Worker secrets、公开域名。
-2. 执行后端 D1 迁移并部署 Worker。
-3. 用真实 API 域名先验证 `login`、`upload`、`track`、`stream`、`cover`。
-4. 后端稳定后，先在 GitHub 仓库配置 Pages workflow 所需的 `CLOUDFLARE_PAGES_PROJECT_NAME` 和 `VITE_API_BASE_URL`。
-5. 再部署 Web Player 到 Pages，确保 `VITE_API_BASE_URL` 指向正式 API 域名。
-6. 最后用真实分享链接做端到端验证，确认分享页、音频下载、封面读取、404/410 页面都正常。
+### 4. 前端部署完成后检查
+
+至少检查：
+
+- 直接打开 `/{shareCode}` 能进页面
+- 刷新 `/{shareCode}` 不会变成静态 404
+- `404` 的分享能进入 Not Found 页面
+- `410` 的分享能进入 Expired 页面
+- 音频对象读取失败时页面提示错误，而不是误判成分享不存在
+
+## 推荐部署顺序
+
+第一次上线时，建议按这个顺序：
+
+1. 先创建 D1、R2、Pages 项目
+2. 再修改 `backend/wrangler.toml`
+3. 再配置 GitHub Repository Secrets / Variables
+4. 先部署后端 Worker
+5. 用真实域名验证后端接口
+6. 再部署前端 Pages
+7. 最后用真实分享链接做一次端到端验证
+
+## HTTPS 怎么办
+
+这套架构不需要你自己配 Nginx 或 Certbot。
+
+- Worker 绑定自定义域名时，Cloudflare 会处理 HTTPS
+- Pages 绑定自定义域名时，Cloudflare 也会处理 HTTPS
+
+你通常只需要在 Cloudflare 控制台把：
+
+- `api.example.com`
+- `share.example.com`
+
+分别绑定到 Worker 和 Pages。
+
+## 常见问题
+
+### 1. 为什么 `database_id` 写在文件里，不放 secret？
+
+因为它是资源绑定配置，不是密码。
+
+它告诉 Cloudflare：
+
+- 这个 Worker 应该绑定哪个 D1
+
+而不是给外部访问数据库的通用凭据。
+
+### 2. fork 我仓库的人会直接拿到我的 D1 / R2 吗？
+
+不会。
+
+fork 的人能看到你的 `wrangler.toml`，但他们不能因为看到了 `database_id` 或 `bucket_name` 就直接访问你的资源。
+
+真正敏感的是：
+
+- `CLOUDFLARE_API_TOKEN`
+- 用户密码
+- 管理员密码
+
+这些必须放在 GitHub Secrets 或 Cloudflare Worker secrets 中。
+
+### 3. GitHub Actions 里的 secret 有两种，我应该用哪种？
+
+如果你是第一次部署：
+
+- 先用 `Repository Secrets`
+
+如果你以后要区分生产环境：
+
+- 再用 `Environment Secrets`
+
+不要一开始就把问题复杂化。
+
+### 4. private 仓库能不能跑 workflow？
+
+能。
+
+私有仓库也可以运行 GitHub Actions。区别主要在于：
+
+- 你的套餐
+- 可用分钟数
+- 是否能用 Environment 功能
+
+### 5. fork PR 会不会拿到我的 secrets？
+
+默认不会。
+
+这也是为什么当前前端 workflow 对 fork PR 只跑构建校验，不做真实部署。
 
 ## 进一步说明
 

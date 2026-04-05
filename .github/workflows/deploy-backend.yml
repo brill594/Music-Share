@@ -65,7 +65,7 @@ jobs:
           wranglerVersion: "4.11.1"
           workingDirectory: "backend"
           preCommands: |
-            wrangler d1 migrations apply MUSIC_SHARE_DB --yes
+            wrangler d1 migrations apply MUSIC_SHARE_DB --remote
           command: deploy
           secrets: |
             MUSIC_SHARE_USER_PASSWORD

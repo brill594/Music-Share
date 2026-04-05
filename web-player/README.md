@@ -94,9 +94,18 @@ npm run dev
 
 Pages 配置：
 
+- Project name: `music-share-web-player`
+- Production branch: `cloud`
 - Build command: `npm run build`
 - Build output directory: `dist`
 - Environment variable: `VITE_API_BASE_URL=https://api.example.com/`
+
+如果创建表单里还有这些字段，建议这样填：
+
+- Framework preset: `None`
+- Root directory: `web-player`
+
+如果你以后改成用 `main` 作为正式发布分支，记得把 Production branch 一起改成 `main`。
 
 GitHub Actions 自动部署已提供：
 

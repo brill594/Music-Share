@@ -138,4 +138,4 @@ cd backend
 npm run deploy
 ```
 
-部署前请先把 `backend/wrangler.toml` 中的 `database_id`、bucket 名称和环境变量配置为真实值。
+部署前请先把 `backend/wrangler.toml` 中的 D1/R2 binding 配置写成真实值，再把密码类运行时值放进 Worker secret 或 GitHub Actions secrets。
