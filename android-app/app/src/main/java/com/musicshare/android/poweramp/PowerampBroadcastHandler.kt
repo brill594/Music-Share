@@ -3,6 +3,7 @@ package com.musicshare.android.poweramp
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.util.DocumentUriResolver
@@ -19,6 +20,10 @@ class PowerampBroadcastHandler(
     fun handle(intent: Intent, onFinished: (() -> Unit)? = null) {
         appScope.launch {
             try {
+                Log.d(
+                    logTag,
+                    "Handling action=${intent.action} keys=${intent.extras?.keySet()?.sorted()?.joinToString().orEmpty()}",
+                )
                 val currentState = stateStore.read()
                 val parsed = parseSnapshot(
                     intent = intent,
@@ -26,9 +31,15 @@ class PowerampBroadcastHandler(
                     treeUri = currentState.musicTreeUri,
                 )
                 if (parsed != null) {
+                    Log.d(
+                        logTag,
+                        "Resolved track title=${parsed.title} path=${parsed.powerampPath} state=${parsed.playbackState} readable=${parsed.isResolvable}",
+                    )
                     stateStore.update { state ->
                         state.copy(latestTrack = parsed)
                     }
+                } else {
+                    Log.d(logTag, "Ignored action=${intent.action} because no usable snapshot was produced")
                 }
             } finally {
                 onFinished?.invoke()
@@ -120,6 +131,8 @@ class PowerampBroadcastHandler(
     }
 
     private companion object {
+        const val logTag = "MusicSharePoweramp"
+
         val watchedActions = setOf(
             PowerampContract.actionTrackChanged,
             PowerampContract.actionTrackChangedExplicit,

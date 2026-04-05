@@ -9,7 +9,6 @@ import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.data.SessionSnapshot
 import java.util.Locale
 import kotlinx.serialization.json.Json
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 class ConfigTransferManager(
     private val context: Context,
@@ -60,7 +59,6 @@ class ConfigTransferManager(
             shareDefaults = imported.shareDefaults,
             server = imported.server.copy(
                 baseUrl = normalizeBaseUrl(imported.server.baseUrl),
-                port = imported.server.port.coerceIn(1, 65_535),
                 authMode = imported.server.authMode.lowercase(Locale.US).takeIf {
                     it in AppDefaults.supportedAuthModes
                 } ?: "none",
@@ -88,16 +86,5 @@ class ConfigTransferManager(
         return runCatching { java.time.Instant.parse(value.expiresAt) }
             .map { value }
             .getOrElse { SessionSnapshot() }
-    }
-
-    private fun normalizeBaseUrl(raw: String): String {
-        val trimmed = raw.trim().removeSuffix("/")
-        if (trimmed.isBlank()) {
-            return ""
-        }
-        if (trimmed.toHttpUrlOrNull() == null) {
-            throw UserVisibleException("base_url 格式无效。")
-        }
-        return trimmed
     }
 }

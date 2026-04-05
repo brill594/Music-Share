@@ -64,19 +64,7 @@ fun MusicShareScreen(
     onExportConfig: () -> Unit,
     onImportConfigPreserveId: () -> Unit,
     onImportConfigReplaceId: () -> Unit,
-    onBaseUrlChange: (String) -> Unit,
-    onPortChange: (String) -> Unit,
-    onAuthModeChange: (String) -> Unit,
-    onBasicPasswordChange: (String) -> Unit,
-    onAdminEnabledChange: (Boolean) -> Unit,
-    onAdminPasswordChange: (String) -> Unit,
-    onExpireAfterSecondsChange: (String) -> Unit,
-    onApplyPreset: (String) -> Unit,
-    onBitrateChange: (String) -> Unit,
-    onSampleRateChange: (String) -> Unit,
-    onChannelsChange: (Int) -> Unit,
-    onMaxDurationChange: (String) -> Unit,
-    onMaxOutputSizeChange: (String) -> Unit,
+    onSaveSettings: (SettingsDraft) -> Unit,
     onClearSession: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -122,22 +110,10 @@ fun MusicShareScreen(
                 )
                 else -> SettingsTab(
                     appState = uiState.appState,
-                    onBaseUrlChange = onBaseUrlChange,
-                    onPortChange = onPortChange,
-                    onAuthModeChange = onAuthModeChange,
-                    onBasicPasswordChange = onBasicPasswordChange,
-                    onAdminEnabledChange = onAdminEnabledChange,
-                    onAdminPasswordChange = onAdminPasswordChange,
-                    onExpireAfterSecondsChange = onExpireAfterSecondsChange,
-                    onApplyPreset = onApplyPreset,
-                    onBitrateChange = onBitrateChange,
-                    onSampleRateChange = onSampleRateChange,
-                    onChannelsChange = onChannelsChange,
-                    onMaxDurationChange = onMaxDurationChange,
-                    onMaxOutputSizeChange = onMaxOutputSizeChange,
                     onExportConfig = onExportConfig,
                     onImportConfigPreserveId = onImportConfigPreserveId,
                     onImportConfigReplaceId = onImportConfigReplaceId,
+                    onSaveSettings = onSaveSettings,
                     onClearSession = onClearSession,
                 )
             }
@@ -288,24 +264,21 @@ private fun ShareManagementTab(
 @Composable
 private fun SettingsTab(
     appState: PersistedAppState,
-    onBaseUrlChange: (String) -> Unit,
-    onPortChange: (String) -> Unit,
-    onAuthModeChange: (String) -> Unit,
-    onBasicPasswordChange: (String) -> Unit,
-    onAdminEnabledChange: (Boolean) -> Unit,
-    onAdminPasswordChange: (String) -> Unit,
-    onExpireAfterSecondsChange: (String) -> Unit,
-    onApplyPreset: (String) -> Unit,
-    onBitrateChange: (String) -> Unit,
-    onSampleRateChange: (String) -> Unit,
-    onChannelsChange: (Int) -> Unit,
-    onMaxDurationChange: (String) -> Unit,
-    onMaxOutputSizeChange: (String) -> Unit,
     onExportConfig: () -> Unit,
     onImportConfigPreserveId: () -> Unit,
     onImportConfigReplaceId: () -> Unit,
+    onSaveSettings: (SettingsDraft) -> Unit,
     onClearSession: () -> Unit,
 ) {
+    val sourceDraft = remember(
+        appState.server,
+        appState.admin,
+        appState.shareDefaults,
+        appState.transcode,
+    ) {
+        SettingsDraft.from(appState)
+    }
+    var draft by remember(sourceDraft) { mutableStateOf(sourceDraft) }
     val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
@@ -315,38 +288,50 @@ private fun SettingsTab(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         HighlightCard(
+            title = "设置草稿",
+            body = if (draft == sourceDraft) "当前没有未保存修改。" else "你有未保存修改，点击保存后才会生效。",
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { onSaveSettings(draft) },
+                    enabled = draft != sourceDraft,
+                ) {
+                    Text("保存设置")
+                }
+                TextButton(
+                    onClick = { draft = sourceDraft },
+                    enabled = draft != sourceDraft,
+                ) {
+                    Text("撤销修改")
+                }
+            }
+        }
+
+        HighlightCard(
             title = "后端连接",
-            body = "所有配置修改后立即持久化。`base_url` 与 `port` 会组合成实际请求地址。",
+            body = "`base_url` 直接填写完整入口地址。输入裸域名会在保存时自动补成 `https://`，非标准端口请直接写在 `base_url` 里。",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
-                    value = appState.server.baseUrl,
-                    onValueChange = onBaseUrlChange,
+                    value = draft.baseUrl,
+                    onValueChange = { draft = draft.copy(baseUrl = it) },
                     label = { Text("base_url") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = appState.server.port.toString(),
-                    onValueChange = onPortChange,
-                    label = { Text("port") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("none" to "无需认证", "basic" to "密码认证").forEach { (value, label) ->
                         FilterChip(
-                            selected = appState.server.authMode == value,
-                            onClick = { onAuthModeChange(value) },
+                            selected = draft.authMode == value,
+                            onClick = { draft = draft.copy(authMode = value) },
                             label = { Text(label) },
                         )
                     }
                 }
                 PasswordField(
                     label = "basic_auth_password",
-                    value = appState.server.basicAuthPassword,
-                    onValueChange = onBasicPasswordChange,
+                    value = draft.basicAuthPassword,
+                    onValueChange = { draft = draft.copy(basicAuthPassword = it) },
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -355,14 +340,14 @@ private fun SettingsTab(
                 ) {
                     Text("保留管理员密码")
                     Switch(
-                        checked = appState.admin.enabled,
-                        onCheckedChange = onAdminEnabledChange,
+                        checked = draft.adminEnabled,
+                        onCheckedChange = { draft = draft.copy(adminEnabled = it) },
                     )
                 }
                 PasswordField(
                     label = "admin_password",
-                    value = appState.admin.password,
-                    onValueChange = onAdminPasswordChange,
+                    value = draft.adminPassword,
+                    onValueChange = { draft = draft.copy(adminPassword = it) },
                 )
                 TextButton(onClick = onClearSession) {
                     Text("清除本地短期凭证")
@@ -377,63 +362,102 @@ private fun SettingsTab(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
-                    value = appState.shareDefaults.expireAfterSeconds.toString(),
-                    onValueChange = onExpireAfterSecondsChange,
+                    value = draft.expireAfterSeconds,
+                    onValueChange = { draft = draft.copy(expireAfterSeconds = it) },
                     label = { Text("expire_after_seconds") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = false, onClick = { onApplyPreset("fast") }, label = { Text("Fast Share") })
-                    FilterChip(selected = false, onClick = { onApplyPreset("balanced") }, label = { Text("Balanced") })
-                    FilterChip(selected = false, onClick = { onApplyPreset("better") }, label = { Text("Better Quality") })
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            val preset = SettingsDraft.preset("fast")
+                            draft = draft.copy(
+                                outputFormat = preset.outputFormat,
+                                audioCodec = preset.audioCodec,
+                                bitrateKbps = preset.bitrateKbps.toString(),
+                                sampleRateHz = preset.sampleRateHz.toString(),
+                                channels = preset.channels,
+                            )
+                        },
+                        label = { Text("Fast Share") },
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            val preset = SettingsDraft.preset("balanced")
+                            draft = draft.copy(
+                                outputFormat = preset.outputFormat,
+                                audioCodec = preset.audioCodec,
+                                bitrateKbps = preset.bitrateKbps.toString(),
+                                sampleRateHz = preset.sampleRateHz.toString(),
+                                channels = preset.channels,
+                            )
+                        },
+                        label = { Text("Balanced") },
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            val preset = SettingsDraft.preset("better")
+                            draft = draft.copy(
+                                outputFormat = preset.outputFormat,
+                                audioCodec = preset.audioCodec,
+                                bitrateKbps = preset.bitrateKbps.toString(),
+                                sampleRateHz = preset.sampleRateHz.toString(),
+                                channels = preset.channels,
+                            )
+                        },
+                        label = { Text("Better Quality") },
+                    )
                 }
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
-                    value = appState.transcode.bitrateKbps.toString(),
-                    onValueChange = onBitrateChange,
+                    value = draft.bitrateKbps,
+                    onValueChange = { draft = draft.copy(bitrateKbps = it) },
                     label = { Text("bitrate_kbps") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
-                    value = appState.transcode.sampleRateHz.toString(),
-                    onValueChange = onSampleRateChange,
+                    value = draft.sampleRateHz,
+                    onValueChange = { draft = draft.copy(sampleRateHz = it) },
                     label = { Text("sample_rate_hz") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
-                        selected = appState.transcode.channels == 1,
-                        onClick = { onChannelsChange(1) },
+                        selected = draft.channels == 1,
+                        onClick = { draft = draft.copy(channels = 1) },
                         label = { Text("单声道") },
                     )
                     FilterChip(
-                        selected = appState.transcode.channels == 2,
-                        onClick = { onChannelsChange(2) },
+                        selected = draft.channels == 2,
+                        onClick = { draft = draft.copy(channels = 2) },
                         label = { Text("双声道") },
                     )
                 }
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
-                    value = appState.transcode.maxDurationSeconds.toString(),
-                    onValueChange = onMaxDurationChange,
+                    value = draft.maxDurationSeconds,
+                    onValueChange = { draft = draft.copy(maxDurationSeconds = it) },
                     label = { Text("max_duration_seconds") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
-                    value = appState.transcode.maxOutputSizeMb.toString(),
-                    onValueChange = onMaxOutputSizeChange,
+                    value = draft.maxOutputSizeMb,
+                    onValueChange = { draft = draft.copy(maxOutputSizeMb = it) },
                     label = { Text("max_output_size_mb") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )
                 Text(
-                    text = "当前输出偏好：${appState.transcode.outputFormat}/${appState.transcode.audioCodec}，若设备端暂不支持，会在分享阶段给出明确错误。",
+                    text = "当前草稿输出偏好：${draft.outputFormat}/${draft.audioCodec}，保存后才会用于实际转码。",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

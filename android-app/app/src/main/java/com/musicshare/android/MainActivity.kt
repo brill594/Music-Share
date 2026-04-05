@@ -70,19 +70,7 @@ class MainActivity : ComponentActivity() {
                         preserveInstallIdOnImport = false
                         importLauncher.launch(arrayOf("application/json", "text/plain"))
                     },
-                    onBaseUrlChange = vm::updateBaseUrl,
-                    onPortChange = vm::updatePort,
-                    onAuthModeChange = vm::updateAuthMode,
-                    onBasicPasswordChange = vm::updateBasicPassword,
-                    onAdminEnabledChange = vm::updateAdminEnabled,
-                    onAdminPasswordChange = vm::updateAdminPassword,
-                    onExpireAfterSecondsChange = vm::updateExpireAfterSeconds,
-                    onApplyPreset = vm::applyPreset,
-                    onBitrateChange = vm::updateBitrate,
-                    onSampleRateChange = vm::updateSampleRate,
-                    onChannelsChange = vm::updateChannels,
-                    onMaxDurationChange = vm::updateMaxDuration,
-                    onMaxOutputSizeChange = vm::updateMaxOutputSize,
+                    onSaveSettings = vm::saveSettings,
                     onClearSession = vm::clearSession,
                 )
             }

@@ -6,7 +6,6 @@ import kotlinx.serialization.Serializable
 
 object AppDefaults {
     const val schemaVersion = 1
-    const val defaultPort = 2087
     const val defaultExpireAfterSeconds = 86_400
     const val defaultBitrateKbps = 96
     const val defaultSampleRateHz = 44_100
@@ -29,7 +28,6 @@ data class ShareDefaults(
 @Serializable
 data class ServerConfig(
     val baseUrl: String = "",
-    val port: Int = AppDefaults.defaultPort,
     val authMode: String = "none",
     val basicAuthPassword: String = "",
 )
@@ -130,7 +128,6 @@ data class PersistedAppState(
     fun hasMusicTreePermission(): Boolean = musicTreeUri.isNotBlank()
 
     fun normalized(): PersistedAppState {
-        val safePort = server.port.coerceIn(1, 65_535)
         val authMode = server.authMode.lowercase(Locale.US).takeIf {
             it in AppDefaults.supportedAuthModes
         } ?: "none"
@@ -156,7 +153,6 @@ data class PersistedAppState(
         return copy(
             schemaVersion = AppDefaults.schemaVersion,
             server = server.copy(
-                port = safePort,
                 authMode = authMode,
             ),
             session = session.copy(role = sessionRole),

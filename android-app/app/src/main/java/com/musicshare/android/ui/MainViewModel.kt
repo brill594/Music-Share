@@ -7,8 +7,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.musicshare.android.MusicShareApplication
 import com.musicshare.android.data.PersistedAppState
-import com.musicshare.android.data.TranscodeConfig
 import com.musicshare.android.network.ShareItemDto
+import com.musicshare.android.util.normalizeBaseUrl
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -150,92 +150,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateBaseUrl(value: String) = persist { it.copy(server = it.server.copy(baseUrl = value)) }
-
-    fun updatePort(value: String) {
-        value.toIntOrNull()?.let { port ->
-            persist { state -> state.copy(server = state.server.copy(port = port)) }
-        }
-    }
-
-    fun updateAuthMode(value: String) = persist { it.copy(server = it.server.copy(authMode = value)) }
-
-    fun updateBasicPassword(value: String) =
-        persist { it.copy(server = it.server.copy(basicAuthPassword = value)) }
-
-    fun updateAdminEnabled(value: Boolean) = persist { it.copy(admin = it.admin.copy(enabled = value)) }
-
-    fun updateAdminPassword(value: String) = persist { it.copy(admin = it.admin.copy(password = value)) }
-
-    fun updateExpireAfterSeconds(value: String) {
-        value.toLongOrNull()?.let { seconds ->
-            persist { state ->
-                state.copy(shareDefaults = state.shareDefaults.copy(expireAfterSeconds = seconds))
+    fun saveSettings(draft: SettingsDraft) {
+        viewModelScope.launch {
+            val normalizedBaseUrl = runCatching { normalizeBaseUrl(draft.baseUrl) }.getOrElse { error ->
+                messages.tryEmit(error.message ?: "base_url 格式无效。")
+                return@launch
             }
-        }
-    }
+            val expireAfterSeconds = draft.expireAfterSeconds.toLongOrNull()
+            if (expireAfterSeconds == null || expireAfterSeconds <= 0L) {
+                messages.tryEmit("expire_after_seconds 必须是正整数。")
+                return@launch
+            }
+            val bitrateKbps = draft.bitrateKbps.toIntOrNull()
+            if (bitrateKbps == null || bitrateKbps <= 0) {
+                messages.tryEmit("bitrate_kbps 必须是正整数。")
+                return@launch
+            }
+            val sampleRateHz = draft.sampleRateHz.toIntOrNull()
+            if (sampleRateHz == null || sampleRateHz <= 0) {
+                messages.tryEmit("sample_rate_hz 必须是正整数。")
+                return@launch
+            }
+            val maxDurationSeconds = draft.maxDurationSeconds.toIntOrNull()
+            if (maxDurationSeconds == null || maxDurationSeconds <= 0) {
+                messages.tryEmit("max_duration_seconds 必须是正整数。")
+                return@launch
+            }
+            val maxOutputSizeMb = draft.maxOutputSizeMb.toIntOrNull()
+            if (maxOutputSizeMb == null || maxOutputSizeMb <= 0) {
+                messages.tryEmit("max_output_size_mb 必须是正整数。")
+                return@launch
+            }
 
-    fun applyPreset(preset: String) {
-        val config = when (preset) {
-            "fast" -> TranscodeConfig(
-                outputFormat = "ogg",
-                audioCodec = "opus",
-                bitrateKbps = 64,
-                sampleRateHz = 24_000,
-                channels = 1,
-            )
-            "better" -> TranscodeConfig(
-                outputFormat = "m4a",
-                audioCodec = "aac",
-                bitrateKbps = 128,
-                sampleRateHz = 44_100,
-                channels = 2,
-            )
-            else -> TranscodeConfig(
-                outputFormat = "ogg",
-                audioCodec = "opus",
-                bitrateKbps = 96,
-                sampleRateHz = 44_100,
-                channels = 2,
-            )
-        }
-        persist { state ->
-            state.copy(
-                transcode = state.transcode.copy(
-                    outputFormat = config.outputFormat,
-                    audioCodec = config.audioCodec,
-                    bitrateKbps = config.bitrateKbps,
-                    sampleRateHz = config.sampleRateHz,
-                    channels = config.channels,
-                ),
-            )
-        }
-    }
-
-    fun updateBitrate(value: String) {
-        value.toIntOrNull()?.let { bitrate ->
-            persist { state -> state.copy(transcode = state.transcode.copy(bitrateKbps = bitrate)) }
-        }
-    }
-
-    fun updateSampleRate(value: String) {
-        value.toIntOrNull()?.let { sampleRate ->
-            persist { state -> state.copy(transcode = state.transcode.copy(sampleRateHz = sampleRate)) }
-        }
-    }
-
-    fun updateChannels(value: Int) =
-        persist { state -> state.copy(transcode = state.transcode.copy(channels = value.coerceIn(1, 2))) }
-
-    fun updateMaxDuration(value: String) {
-        value.toIntOrNull()?.let { seconds ->
-            persist { state -> state.copy(transcode = state.transcode.copy(maxDurationSeconds = seconds)) }
-        }
-    }
-
-    fun updateMaxOutputSize(value: String) {
-        value.toIntOrNull()?.let { sizeMb ->
-            persist { state -> state.copy(transcode = state.transcode.copy(maxOutputSizeMb = sizeMb)) }
+            container.stateStore.update { state ->
+                state.copy(
+                    server = state.server.copy(
+                        baseUrl = normalizedBaseUrl,
+                        authMode = draft.authMode,
+                        basicAuthPassword = draft.basicAuthPassword,
+                    ),
+                    admin = state.admin.copy(
+                        enabled = draft.adminEnabled,
+                        password = draft.adminPassword,
+                    ),
+                    shareDefaults = state.shareDefaults.copy(
+                        expireAfterSeconds = expireAfterSeconds,
+                    ),
+                    transcode = state.transcode.copy(
+                        outputFormat = draft.outputFormat,
+                        audioCodec = draft.audioCodec,
+                        bitrateKbps = bitrateKbps,
+                        sampleRateHz = sampleRateHz,
+                        channels = draft.channels,
+                        maxDurationSeconds = maxDurationSeconds,
+                        maxOutputSizeMb = maxOutputSizeMb,
+                    ),
+                )
+            }
+            messages.tryEmit("设置已保存。")
         }
     }
 
@@ -243,12 +215,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             container.backendRepository.clearSession()
             messages.tryEmit("已清除本地短期凭证。")
-        }
-    }
-
-    private fun persist(transform: (PersistedAppState) -> PersistedAppState) {
-        viewModelScope.launch {
-            container.stateStore.update(transform)
         }
     }
 

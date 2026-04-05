@@ -121,7 +121,6 @@ Android App 是整个项目的入口，负责：
 2. 首次安装后生成并持久化 `client_install_id`。
 3. 设置中允许配置：
    - `base_url`
-   - `port`，默认 `2087`
    - `auth_mode`
    - `basic_auth_password`
    - 管理员密码
@@ -167,7 +166,6 @@ Android App 是整个项目的入口，负责：
 
 - `client_install_id`
 - `base_url`
-- `port`
 - `auth_mode`
 - `basic_auth_password`
 - 管理员密码
@@ -188,7 +186,6 @@ Android App 是整个项目的入口，负责：
   },
   "server": {
     "base_url": "https://music.example.com",
-    "port": 2087,
     "auth_mode": "none",
     "basic_auth_password": ""
   },

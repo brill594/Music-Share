@@ -1,13 +1,17 @@
 package com.musicshare.android.network
 
 import android.content.Context
+import android.util.Log
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.data.SessionSnapshot
 import com.musicshare.android.util.UserVisibleException
+import com.musicshare.android.util.normalizeBaseUrl
 import com.musicshare.android.util.nowIso
 import java.io.IOException
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -44,7 +48,7 @@ class MusicShareBackendRepository(
                 authLog = it.authLog.copy(lastAuthRequestedAt = nowIso()),
             )
         }
-        val response = executeLogin(current, password)
+        val response = executeLoginWithRetry(current, password)
         val session = SessionSnapshot(
             authType = response.authType,
             accessKey = response.sessionKey,
@@ -174,6 +178,31 @@ class MusicShareBackendRepository(
         )
     }
 
+    private suspend fun executeLoginWithRetry(state: PersistedAppState, password: String): LoginResponse {
+        var lastError: Throwable? = null
+        repeat(maxLoginAttempts) { attempt ->
+            runCatching {
+                executeLogin(state, password)
+            }.onSuccess { return it }
+                .onFailure { error ->
+                    lastError = error
+                    val shouldRetry = attempt < maxLoginAttempts - 1 && shouldRetryLogin(error)
+                    Log.w(
+                        authLogTag,
+                        "Login attempt ${attempt + 1}/$maxLoginAttempts failed retry=$shouldRetry message=${error.message}",
+                    )
+                    if (shouldRetry) {
+                        delay(loginRetryDelayMillis(attempt))
+                    }
+                }
+        }
+        val failure = lastError ?: UserVisibleException("认证失败。")
+        if (shouldRetryLogin(failure)) {
+            throw UserVisibleException("${failure.message ?: "认证失败。"}（已自动重试，最多尝试 ${maxLoginAttempts} 次）")
+        }
+        throw failure
+    }
+
     private suspend fun <T> withAuthorizedSession(
         preferAdmin: Boolean = false,
         block: suspend (PersistedAppState, SessionSnapshot) -> T,
@@ -195,7 +224,7 @@ class MusicShareBackendRepository(
 
     private suspend inline fun <reified T> executeJson(request: Request): T = withContext(Dispatchers.IO) {
         val response = runCatching { httpClient.newCall(request).execute() }.getOrElse { error ->
-            throw mapCallError(error)
+            throw mapCallError(error, request.url)
         }
         response.use { call ->
             val bodyText = call.body?.string().orEmpty()
@@ -232,15 +261,12 @@ class MusicShareBackendRepository(
     }
 
     private fun resolveBaseUrl(state: PersistedAppState): HttpUrl {
-        val raw = state.server.baseUrl.trim().removeSuffix("/")
-        if (raw.isBlank()) {
+        val normalized = normalizeBaseUrl(state.server.baseUrl)
+        if (normalized.isBlank()) {
             throw UserVisibleException("请先配置后端 base_url。")
         }
-        val parsed = raw.toHttpUrlOrNull()
+        return normalized.toHttpUrlOrNull()
             ?: throw UserVisibleException("base_url 格式无效。")
-        return parsed.newBuilder()
-            .port(state.server.port)
-            .build()
     }
 
     private fun parseErrorMessage(bodyText: String): String? {
@@ -249,13 +275,68 @@ class MusicShareBackendRepository(
         }.getOrNull()
     }
 
-    private fun mapCallError(error: Throwable): UserVisibleException {
+    private fun mapCallError(error: Throwable, requestUrl: HttpUrl): UserVisibleException {
         return when (error) {
-            is IOException -> UserVisibleException("网络请求失败：${error.message ?: "无法连接后端"}")
             is UserVisibleException -> error
+            is IOException -> UserVisibleException(buildNetworkErrorMessage(error, requestUrl))
             else -> UserVisibleException(error.message ?: "请求失败。")
         }
     }
 
+    private fun buildNetworkErrorMessage(error: IOException, requestUrl: HttpUrl): String {
+        val rawMessage = error.message?.trim().takeUnless { it.isNullOrBlank() } ?: "无法连接后端"
+        val hint = buildNetworkHint(error, requestUrl)
+        return if (hint == null) {
+            "网络请求失败：$rawMessage"
+        } else {
+            "网络请求失败：$rawMessage。$hint"
+        }
+    }
+
+    private fun buildNetworkHint(error: IOException, requestUrl: HttpUrl): String? {
+        if (!requestUrl.isHttps) {
+            return null
+        }
+        val diagnostic = generateSequence(error as Throwable?) { it.cause }
+            .mapNotNull { it.message }
+            .joinToString(" | ")
+            .lowercase(Locale.US)
+        val looksLikeClosedOrTlsFailure = listOf(
+            "connection closed",
+            "unexpected end of stream",
+            "connection reset",
+            "broken pipe",
+            "ssl",
+            "tls",
+            "handshake",
+            "protocol exception",
+        ).any { it in diagnostic }
+        if (!looksLikeClosedOrTlsFailure) {
+            return null
+        }
+        return "如果后端是直接运行在 ${requestUrl.port} 端口的 HTTP 服务，请把 base_url 显式写成 http://${requestUrl.host}；只有挂了 HTTPS 反向代理或证书时才用 https://。"
+    }
+
+    private fun shouldRetryLogin(error: Throwable): Boolean {
+        return when (error) {
+            is UserVisibleException -> {
+                val message = error.message?.trim().orEmpty()
+                message.startsWith("网络请求失败") || message.startsWith("请求失败: HTTP 5")
+            }
+            is IOException -> true
+            else -> false
+        }
+    }
+
+    private fun loginRetryDelayMillis(attempt: Int): Long {
+        val delay = 600L + attempt * 400L
+        return delay.coerceAtMost(3_000L)
+    }
+
     private class SessionExpiredException : IOException()
+
+    private companion object {
+        const val maxLoginAttempts = 10
+        const val authLogTag = "MusicShareAuth"
+    }
 }

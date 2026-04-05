@@ -1,5 +1,7 @@
 package com.musicshare.android.poweramp
 
+import android.content.IntentFilter
+
 object PowerampContract {
     const val actionTrackChanged = "com.maxmpz.audioplayer.TRACK_CHANGED"
     const val actionTrackChangedExplicit = "com.maxmpz.audioplayer.TRACK_CHANGED_EXPLICIT"
@@ -23,4 +25,12 @@ object PowerampContract {
     const val stateStopped = 0
     const val statePlaying = 1
     const val statePaused = 2
+
+    fun intentFilter(): IntentFilter =
+        IntentFilter().apply {
+            addAction(actionTrackChanged)
+            addAction(actionTrackChangedExplicit)
+            addAction(actionStatusChanged)
+            addAction(actionStatusChangedExplicit)
+        }
 }
