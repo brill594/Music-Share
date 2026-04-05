@@ -378,8 +378,7 @@ server {
 }
 
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;
     server_name ${domain};
     client_max_body_size 64m;
     root "${FRONTEND_DIST_DIR}";
@@ -444,8 +443,7 @@ server {
 }
 
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;
     server_name ${domain};
     client_max_body_size 64m;
 
