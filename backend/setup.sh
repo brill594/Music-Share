@@ -19,6 +19,7 @@ BACKEND_UPSTREAM_PORT="${MUSIC_SHARE_BACKEND_PORT:-2087}"
 SITE_NAME="${MUSIC_SHARE_NGINX_SITE_NAME:-music-share.conf}"
 CERTBOT_MODE="${MUSIC_SHARE_CERTBOT_MODE:-auto}"
 CLOUDFLARE_PROPAGATION_SECONDS="${MUSIC_SHARE_CLOUDFLARE_PROPAGATION_SECONDS:-30}"
+PUBLIC_HTTPS_PORT="${MUSIC_SHARE_PUBLIC_HTTPS_PORT:-443}"
 DOMAIN_CHECK_PATH="/.well-known/music-share-domain-check.txt"
 SERVICE_USER="${MUSIC_SHARE_SERVICE_USER:-music-share}"
 CERTBOT_DEPLOY_HOOK="${MUSIC_SHARE_CERTBOT_DEPLOY_HOOK:-}"
@@ -211,6 +212,31 @@ validate_domain_format() {
     [[ "${domain}" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]
 }
 
+validate_public_https_port() {
+    local port="$1"
+    local port_num
+
+    [[ "${port}" =~ ^[0-9]{1,5}$ ]] || return 1
+    port_num=$((10#${port}))
+    (( port_num >= 1 && port_num <= 65535 )) || return 1
+    (( port_num != 80 )) || return 1
+}
+
+https_port_suffix() {
+    local port="$1"
+    if [[ "${port}" == "443" ]]; then
+        printf ''
+    else
+        printf ':%s' "${port}"
+    fi
+}
+
+build_public_base_url() {
+    local domain="$1"
+    local port="$2"
+    printf 'https://%s%s' "${domain}" "$(https_port_suffix "${port}")"
+}
+
 prepare_nginx_layout() {
     run_root mkdir -p "$(dirname "${NGINX_SITE_CONF}")"
     if [[ -n "${NGINX_SITE_LINK}" ]]; then
@@ -385,6 +411,8 @@ write_https_conf() {
     local domain="$1"
     local output_file="$2"
     local cert_dir="${LE_CONFIG_DIR}/live/${domain}"
+    local public_base_url
+    public_base_url="$(build_public_base_url "${domain}" "${PUBLIC_HTTPS_PORT}")"
 
     if [[ -n "${FRONTEND_DIST_DIR}" ]]; then
         cat > "${output_file}" <<EOF
@@ -400,12 +428,12 @@ server {
     }
 
     location / {
-        return 301 https://\$host\$request_uri;
+        return 301 ${public_base_url}\$request_uri;
     }
 }
 
 server {
-    listen 443 ssl http2;
+    listen ${PUBLIC_HTTPS_PORT} ssl http2;
     server_name ${domain};
     client_max_body_size 64m;
     root "${FRONTEND_DIST_DIR}";
@@ -465,12 +493,12 @@ server {
     }
 
     location / {
-        return 301 https://\$host\$request_uri;
+        return 301 ${public_base_url}\$request_uri;
     }
 }
 
 server {
-    listen 443 ssl http2;
+    listen ${PUBLIC_HTTPS_PORT} ssl http2;
     server_name ${domain};
     client_max_body_size 64m;
 
@@ -729,10 +757,12 @@ main() {
     fi
     log "backend runtime data root: ${APP_DATA_ROOT}"
     log "certbot mode: ${CERTBOT_MODE}"
+    log "公网 HTTPS 端口默认使用 443；如需改成其他端口，例如 8443，可在下一步输入"
     log "请输入纯域名，例如 example.com；也可以直接粘贴 https://example.com/ ，脚本会自动提取域名"
 
     local domain="${MUSIC_SHARE_DOMAIN:-}"
     local email="${MUSIC_SHARE_CERTBOT_EMAIL:-}"
+    local public_https_port="${MUSIC_SHARE_PUBLIC_HTTPS_PORT:-${PUBLIC_HTTPS_PORT}}"
     domain="$(normalize_domain_input "${domain}")"
 
     while true; do
@@ -740,6 +770,13 @@ main() {
         validate_domain_format "${domain}" && break
         printf '域名格式不合法，请输入纯域名，例如：example.com\n'
     done
+
+    while true; do
+        public_https_port="$(prompt_value "请输入对外 HTTPS 端口" "${public_https_port}")"
+        validate_public_https_port "${public_https_port}" && break
+        printf 'HTTPS 端口格式不合法，请输入 1-65535 之间的整数，且不要使用 80；默认：443\n'
+    done
+    PUBLIC_HTTPS_PORT="${public_https_port}"
 
     email="$(prompt_value "请输入 Certbot 邮箱，可留空" "${email}")"
 
@@ -774,8 +811,9 @@ PY
     test_nginx
     reload_or_start_nginx
 
-    upsert_env_value "MUSIC_SHARE_PUBLIC_API_BASE_URL" "https://${domain}"
-    upsert_env_value "MUSIC_SHARE_PUBLIC_SHARE_BASE_URL" "https://${domain}"
+    upsert_env_value "MUSIC_SHARE_PUBLIC_API_BASE_URL" "$(build_public_base_url "${domain}" "${PUBLIC_HTTPS_PORT}")"
+    upsert_env_value "MUSIC_SHARE_PUBLIC_SHARE_BASE_URL" "$(build_public_base_url "${domain}" "${PUBLIC_HTTPS_PORT}")"
+    upsert_env_value "MUSIC_SHARE_PUBLIC_HTTPS_PORT" "${PUBLIC_HTTPS_PORT}"
     upsert_env_value "MUSIC_SHARE_USE_X_ACCEL_REDIRECT" "true"
     upsert_env_value "MUSIC_SHARE_INTERNAL_MEDIA_PREFIX" "/internal-media"
     upsert_env_value "MUSIC_SHARE_DATA_ROOT" "${APP_DATA_ROOT}"
@@ -784,6 +822,7 @@ PY
     log "setup complete"
     log "nginx config: ${NGINX_SITE_CONF}"
     log "certificate directory: ${LE_CONFIG_DIR}/live/${domain}"
+    log "public base url: $(build_public_base_url "${domain}" "${PUBLIC_HTTPS_PORT}")"
     log "backend env file updated: ${ENV_FILE}"
     log "next step: run sudo bash ./start.sh from the project root"
 }
