@@ -105,6 +105,20 @@ ensure_backend_venv() {
     python3 -m venv "${BACKEND_VENV_DIR}"
 }
 
+ensure_backend_pip() {
+    local python_bin="${BACKEND_VENV_DIR}/bin/python"
+
+    [[ -x "${python_bin}" ]] || fail "backend virtualenv python not found: ${python_bin}"
+
+    if "${python_bin}" -m pip --version >/dev/null 2>&1; then
+        return
+    fi
+
+    log "pip not found in backend virtualenv, bootstrapping with ensurepip"
+    "${python_bin}" -m ensurepip --upgrade || fail "failed to bootstrap pip in ${BACKEND_VENV_DIR}"
+    "${python_bin}" -m pip install --upgrade pip setuptools wheel
+}
+
 install_backend_dependencies() {
     local python_bin="${BACKEND_VENV_DIR}/bin/python"
     log "installing backend dependencies"
@@ -216,6 +230,7 @@ main() {
     ensure_service_user
     prepare_service_data_root
     ensure_backend_venv
+    ensure_backend_pip
     install_backend_dependencies
     install_frontend_dependencies
     build_frontend
