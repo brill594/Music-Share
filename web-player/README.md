@@ -1,6 +1,6 @@
 # Music Share Web Player
 
-`web-player` 是 Music Share 的公开试听前端。当前版本已经按 Cloudflare Pages 独立 SPA 的部署方式整理，默认对接公开 API 域名，而不是依赖同源 Nginx 反代。
+`web-player` 是 Music Share 的公开试听前端。这个分支只保留 Cloudflare Pages + Worker API 的部署方式，不再兼容旧的同源静态托管路径。
 
 核心行为保持不变：
 
@@ -51,9 +51,9 @@ npm run dev
 
 说明：
 
-- 推荐始终显式配置 `VITE_API_BASE_URL`
-- 如果没有配置，前端会回退到当前页面 `origin`
-- 回退模式只作为兼容旧同源部署的兜底，不是 Cloudflare 的推荐生产方案
+- `VITE_API_BASE_URL` 是必填项
+- 它必须指向可直接访问的公开 Worker API 绝对 URL
+- 如果未配置或格式错误，页面会直接报配置错误，而不是回退到旧同源路径
 
 ## 前后端契约
 
@@ -79,11 +79,11 @@ npm run dev
 - `404` 表示分享不存在
 - `410` 表示分享已过期或已终止
 
-兼容性要求：
+接口要求：
 
 - `stream_url` 应该可以被浏览器直接访问
 - `cover_url` 应该是可直接访问的公开地址或 `null`
-- 推荐返回绝对 URL，便于 Pages 与 Worker 分域部署
+- `stream_url` 和 `cover_url` 应返回绝对 URL
 
 ## Cloudflare Pages 部署
 
@@ -108,16 +108,14 @@ Pages 配置：
 - 刷新 `/{shareCode}`
 - 从聊天、浏览器历史或外部应用再次打开分享链接
 
-## 迁移后的前端行为
+## 前端行为
 
-为适配 Pages + Worker，前端现在有这些约束：
+当前实现有这些固定约束：
 
 - 请求公开元数据接口时不再依赖 cookie
 - 下载音频文件时不再携带 `credentials`
 - 元数据接口的 `404/410` 仍然驱动 Not Found / Expired 页面
 - 音频对象缺失、Worker 错误页、CORS 失败会保留在当前页面并展示错误提示，不会误跳成分享 404
-
-这意味着可以先把前端部署到 Pages，再逐步把 API 切到 Worker，而不需要继续绑定同源反代。
 
 ## 构建与预览
 

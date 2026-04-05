@@ -2,6 +2,13 @@ import type { DownloadProgress, PublicTrack } from "@/types/share";
 
 type PublicRequestScope = "metadata" | "audio";
 
+export class ConfigurationError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "ConfigurationError";
+  }
+}
+
 export class HttpError extends Error {
   status: number;
   detail: string;
@@ -19,11 +26,17 @@ export class HttpError extends Error {
 function resolveApiBaseUrl(): string {
   const configuredValue = import.meta.env.VITE_API_BASE_URL;
   const configured = typeof configuredValue === "string" ? configuredValue.trim() : "";
-  if (configured) {
-    return configured.endsWith("/") ? configured : `${configured}/`;
+  if (!configured) {
+    throw new ConfigurationError("缺少 VITE_API_BASE_URL 配置，当前分支只支持 Cloudflare Pages + Worker API 部署。");
   }
 
-  return `${window.location.origin}/`;
+  const normalizedUrl = configured.endsWith("/") ? configured : `${configured}/`;
+
+  try {
+    return new URL(normalizedUrl).toString();
+  } catch {
+    throw new ConfigurationError("VITE_API_BASE_URL 必须是合法的绝对 URL。");
+  }
 }
 
 function buildApiUrl(path: string): string {
@@ -156,6 +169,10 @@ export async function downloadAudio(
 }
 
 export function toUserMessage(error: unknown): string {
+  if (error instanceof ConfigurationError) {
+    return error.message;
+  }
+
   if (error instanceof HttpError) {
     if (error.scope === "metadata") {
       if (error.status === 404) {

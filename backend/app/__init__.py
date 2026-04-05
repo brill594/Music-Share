@@ -1,1 +1,0 @@
-"""Music Share backend package."""

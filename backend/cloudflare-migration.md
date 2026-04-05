@@ -1,5 +1,7 @@
 # Backend 迁移路线规划（Cloudflare Workers + R2 + D1）
 
+> 说明：该迁移在当前分支已落地，仓库已移除旧的 FastAPI/Nginx/SQLite 实现。本文件保留为迁移决策记录。
+
 ## 目标
 
 将 `backend` 从“FastAPI + SQLite + 本地文件系统 + Nginx X-Accel-Redirect”迁移为“Cloudflare Worker + D1 + R2 + Cron Trigger”，同时尽量保持现有公开接口与上传流程稳定。
