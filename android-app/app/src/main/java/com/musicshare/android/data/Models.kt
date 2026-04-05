@@ -83,6 +83,7 @@ data class UiConfig(
 data class RuntimeStatus(
     val isProcessing: Boolean = false,
     val currentStage: String = "",
+    val progressPercent: Int = -1,
     val lastError: String = "",
     val lastShareUrl: String = "",
     val lastCompletedAt: String = "",

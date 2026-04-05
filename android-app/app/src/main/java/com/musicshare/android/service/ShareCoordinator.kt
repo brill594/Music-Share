@@ -8,6 +8,7 @@ import android.net.Uri
 import android.webkit.MimeTypeMap
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.CurrentTrackSnapshot
+import com.musicshare.android.data.TranscodeConfig
 import com.musicshare.android.network.MusicShareBackendRepository
 import com.musicshare.android.network.PreparedUpload
 import com.musicshare.android.network.ShareItemDto
@@ -29,11 +30,13 @@ class ShareCoordinator(
     private val documentUriResolver: DocumentUriResolver,
 ) {
     private val shareMutex = Mutex()
+    private val audioTranscoder = FfmpegAudioTranscoder(context)
 
     suspend fun shareLatestTrack(): ShareItemDto = shareMutex.withLock {
         updateRuntime(
             processing = true,
             stage = "校验当前曲目",
+            progressPercent = -1,
             lastError = "",
             lastShareUrl = "",
         )
@@ -47,12 +50,13 @@ class ShareCoordinator(
                 add(prepared.audioFile)
                 prepared.coverFile?.let(::add)
             }
-            updateRuntime(processing = true, stage = "上传到后端")
+            updateRuntime(processing = true, stage = "上传到后端", progressPercent = -1)
             val uploaded = backendRepository.upload(prepared)
             copyToClipboard(uploaded.shareUrl)
             updateRuntime(
                 processing = false,
                 stage = "",
+                progressPercent = -1,
                 lastError = "",
                 lastShareUrl = uploaded.shareUrl,
             )
@@ -61,6 +65,7 @@ class ShareCoordinator(
             updateRuntime(
                 processing = false,
                 stage = "",
+                progressPercent = -1,
                 lastError = error.message ?: "分享失败。",
             )
             throw error
@@ -106,29 +111,25 @@ class ShareCoordinator(
             throw UserVisibleException("曲目时长超过当前配置上限。")
         }
 
-        updateRuntime(processing = true, stage = "准备音频文件")
+        val targetSpec = FfmpegAudioTranscoder.TargetAudioSpec.from(appState.transcode)
+        updateRuntime(processing = true, stage = "准备音频文件", progressPercent = -1)
         val sourceMime = metadata.audioMimeType
-        val targetMime = when (sourceMime) {
-            "audio/ogg", "audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/aac" -> sourceMime
-            else -> throw UserVisibleException(
-                "当前构建仅支持直接分享 OGG / MP3 / AAC / M4A 源文件。其他格式需要后续接入 FFmpeg 转码。",
+        val preparedAudio = if (targetSpec.matchesSourceMime(sourceMime)) {
+            copySourceAudio(sourceUri, targetSpec.mimeType)
+        } else {
+            transcodeAudio(
+                sourceUri = sourceUri,
+                durationMs = metadata.durationMs,
+                transcodeConfig = appState.transcode,
             )
         }
-        val extension = extensionForMime(targetMime)
-        val audioFile = File.createTempFile("music-share-${UUID.randomUUID()}", extension, context.cacheDir)
-        context.contentResolver.openInputStream(sourceUri)?.use { input ->
-            FileOutputStream(audioFile).use { output ->
-                input.copyTo(output)
-            }
-        } ?: throw UserVisibleException("无法读取当前音频文件。")
-
         val maxBytes = metadata.maxOutputBytes
-        if (audioFile.length() > maxBytes) {
-            audioFile.delete()
+        if (preparedAudio.file.length() > maxBytes) {
+            preparedAudio.file.delete()
             throw UserVisibleException("音频文件超过当前配置的输出大小上限。")
         }
 
-        updateRuntime(processing = true, stage = "提取封面")
+        updateRuntime(processing = true, stage = "提取封面", progressPercent = -1)
         val coverResult = metadata.coverBytes?.let { bytes ->
             val coverMime = detectImageMime(bytes) ?: return@let null
             val coverFile = File.createTempFile(
@@ -141,8 +142,8 @@ class ShareCoordinator(
         }
 
         PreparedUpload(
-            audioFile = audioFile,
-            audioMimeType = targetMime,
+            audioFile = preparedAudio.file,
+            audioMimeType = preparedAudio.audioMimeType,
             coverFile = coverResult?.first,
             coverMimeType = coverResult?.second,
             title = metadata.title.ifBlank { track.displayTitle() },
@@ -151,6 +152,43 @@ class ShareCoordinator(
             durationMs = metadata.durationMs,
             clientCreatedAt = track.updatedAt.ifBlank { nowIso() },
             expireAfterSeconds = appState.shareDefaults.expireAfterSeconds,
+        )
+    }
+
+    private suspend fun transcodeAudio(
+        sourceUri: Uri,
+        durationMs: Long,
+        transcodeConfig: TranscodeConfig,
+    ): PreparedAudioFile {
+        val result = audioTranscoder.transcode(
+            sourceUri = sourceUri,
+            durationMs = durationMs,
+            transcodeConfig = transcodeConfig,
+            onProgress = { progress ->
+                updateRuntimeBlocking(
+                    processing = true,
+                    stage = progress.stage,
+                    progressPercent = progress.progressPercent,
+                )
+            },
+        )
+        return PreparedAudioFile(
+            file = result.file,
+            audioMimeType = result.audioMimeType,
+        )
+    }
+
+    private suspend fun copySourceAudio(sourceUri: Uri, targetMimeType: String): PreparedAudioFile {
+        val extension = extensionForMime(targetMimeType)
+        val audioFile = File.createTempFile("music-share-${UUID.randomUUID()}", extension, context.cacheDir)
+        context.contentResolver.openInputStream(sourceUri)?.use { input ->
+            FileOutputStream(audioFile).use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw UserVisibleException("无法读取当前音频文件。")
+        return PreparedAudioFile(
+            file = audioFile,
+            audioMimeType = targetMimeType,
         )
     }
 
@@ -198,6 +236,7 @@ class ShareCoordinator(
     private suspend fun updateRuntime(
         processing: Boolean,
         stage: String,
+        progressPercent: Int? = null,
         lastError: String? = null,
         lastShareUrl: String? = null,
     ) {
@@ -206,10 +245,25 @@ class ShareCoordinator(
                 runtime = state.runtime.copy(
                     isProcessing = processing,
                     currentStage = stage,
+                    progressPercent = progressPercent ?: state.runtime.progressPercent,
                     lastError = lastError ?: state.runtime.lastError,
                     lastShareUrl = lastShareUrl ?: state.runtime.lastShareUrl,
                     lastCompletedAt = if (!processing) nowIso() else state.runtime.lastCompletedAt,
                 ),
+            )
+        }
+    }
+
+    private fun updateRuntimeBlocking(
+        processing: Boolean,
+        stage: String,
+        progressPercent: Int,
+    ) {
+        kotlinx.coroutines.runBlocking {
+            updateRuntime(
+                processing = processing,
+                stage = stage,
+                progressPercent = progressPercent,
             )
         }
     }
@@ -270,5 +324,10 @@ class ShareCoordinator(
         val audioMimeType: String,
         val maxDurationLimitMs: Long,
         val maxOutputBytes: Long,
+    )
+
+    private data class PreparedAudioFile(
+        val file: File,
+        val audioMimeType: String,
     )
 }

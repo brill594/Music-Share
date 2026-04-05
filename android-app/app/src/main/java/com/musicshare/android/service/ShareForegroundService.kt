@@ -11,17 +11,23 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.musicshare.android.MusicShareApplication
 import com.musicshare.android.R
+import com.musicshare.android.data.RuntimeStatus
 import com.musicshare.android.tile.TileStateBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class ShareForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var running = false
+    private var runtimeObserverJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -35,7 +41,19 @@ class ShareForegroundService : Service() {
         running = true
         startForeground(notificationId, buildNotification(getString(R.string.notification_title_processing), "初始化中"))
         TileStateBridge.requestRefresh(this)
-        val coordinator = (application as MusicShareApplication).container.shareCoordinator
+        val container = (application as MusicShareApplication).container
+        val coordinator = container.shareCoordinator
+        runtimeObserverJob?.cancel()
+        runtimeObserverJob = serviceScope.launch {
+            container.stateStore.state
+                .map { it.runtime }
+                .distinctUntilChanged()
+                .collect { runtime ->
+                    if (running) {
+                        updateOngoingNotification(runtime)
+                    }
+                }
+        }
         serviceScope.launch {
             try {
                 val result = coordinator.shareLatestTrack()
@@ -52,6 +70,8 @@ class ShareForegroundService : Service() {
                 )
             } finally {
                 running = false
+                runtimeObserverJob?.cancel()
+                runtimeObserverJob = null
                 TileStateBridge.requestRefresh(this@ShareForegroundService)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf(startId)
@@ -61,6 +81,7 @@ class ShareForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        runtimeObserverJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -75,14 +96,43 @@ class ShareForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(title: String, content: String): Notification {
-        return NotificationCompat.Builder(this, notificationChannelId)
+    private fun updateOngoingNotification(runtime: RuntimeStatus) {
+        val content = buildString {
+            append(runtime.currentStage.ifBlank { "处理中" })
+            if (runtime.progressPercent >= 0) {
+                append(" ${runtime.progressPercent}%")
+            }
+        }
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(
+            notificationId,
+            buildNotification(
+                title = getString(R.string.notification_title_processing),
+                content = content,
+                progressPercent = runtime.progressPercent,
+            ),
+        )
+    }
+
+    private fun buildNotification(
+        title: String,
+        content: String,
+        progressPercent: Int = -1,
+    ): Notification {
+        val builder = NotificationCompat.Builder(this, notificationChannelId)
             .setSmallIcon(R.drawable.ic_music_tile)
             .setContentTitle(title)
             .setContentText(content)
             .setOngoing(running)
             .setOnlyAlertOnce(true)
-            .build()
+        if (running) {
+            if (progressPercent in 0..99) {
+                builder.setProgress(100, progressPercent, false)
+            } else {
+                builder.setProgress(100, 0, true)
+            }
+        }
+        return builder.build()
     }
 
     private fun createNotificationChannel() {

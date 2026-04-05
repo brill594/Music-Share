@@ -206,11 +206,17 @@ private fun CurrentTrackTab(
         }
 
         val runtime = appState.runtime
-        if (runtime.currentStage.isNotBlank() || runtime.lastError.isNotBlank() || runtime.lastShareUrl.isNotBlank()) {
+        if (
+            runtime.currentStage.isNotBlank() ||
+            runtime.progressPercent >= 0 ||
+            runtime.lastError.isNotBlank() ||
+            runtime.lastShareUrl.isNotBlank()
+        ) {
             HighlightCard(
                 title = if (runtime.isProcessing) "后台任务进行中" else "最近一次结果",
                 body = buildString {
                     if (runtime.currentStage.isNotBlank()) append("阶段：${runtime.currentStage}\n")
+                    if (runtime.progressPercent >= 0) append("进度：${runtime.progressPercent}%\n")
                     if (runtime.lastError.isNotBlank()) append("错误：${runtime.lastError}\n")
                     if (runtime.lastShareUrl.isNotBlank()) append("链接：${runtime.lastShareUrl}\n")
                     if (runtime.lastCompletedAt.isNotBlank()) append("完成：${formatDisplayTime(runtime.lastCompletedAt)}")
