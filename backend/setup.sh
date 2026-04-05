@@ -7,6 +7,7 @@ SETUP_DATA_DIR="${SCRIPT_DIR}/data"
 APP_DATA_ROOT=""
 STORAGE_DIR=""
 ACME_WEBROOT="${SETUP_DATA_DIR}/certbot-www"
+ACME_CHALLENGE_DIR="${ACME_WEBROOT}/.well-known/acme-challenge"
 LE_BASE_DIR="${SETUP_DATA_DIR}/letsencrypt"
 LE_CONFIG_DIR="${LE_BASE_DIR}/config"
 LE_WORK_DIR="${LE_BASE_DIR}/work"
@@ -174,6 +175,11 @@ prepare_nginx_layout() {
     if [[ -n "${NGINX_SITE_LINK}" ]]; then
         run_root mkdir -p "$(dirname "${NGINX_SITE_LINK}")"
     fi
+}
+
+ensure_acme_webroot_permissions() {
+    mkdir -p "${ACME_WEBROOT}/.well-known" "${ACME_CHALLENGE_DIR}"
+    chmod 755 "${ACME_WEBROOT}" "${ACME_WEBROOT}/.well-known" "${ACME_CHALLENGE_DIR}"
 }
 
 write_http_only_conf() {
@@ -504,6 +510,7 @@ main() {
     prepare_nginx_layout
 
     mkdir -p "${APP_DATA_ROOT}" "${STORAGE_DIR}" "${ACME_WEBROOT}" "${LE_CONFIG_DIR}" "${LE_WORK_DIR}" "${LE_LOGS_DIR}"
+    ensure_acme_webroot_permissions
 
     if [[ -n "${FRONTEND_DIST_DIR}" ]]; then
         log "frontend dist detected: ${FRONTEND_DIST_DIR}"
@@ -533,6 +540,7 @@ PY
 )"
     mkdir -p "$(dirname "${ACME_WEBROOT}${DOMAIN_CHECK_PATH}")"
     printf '%s' "${token}" > "${ACME_WEBROOT}${DOMAIN_CHECK_PATH}"
+    chmod 644 "${ACME_WEBROOT}${DOMAIN_CHECK_PATH}"
 
     local temp_http_conf
     temp_http_conf="$(mktemp)"
