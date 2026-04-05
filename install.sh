@@ -16,6 +16,7 @@ SERVICE_DATA_ROOT="${MUSIC_SHARE_SERVICE_DATA_ROOT:-/var/lib/music-share}"
 SERVICE_UNIT_PATH=""
 SERVICE_WRAPPER_PATH=""
 NOLOGIN_SHELL=""
+BACKEND_ENV_FILE="${BACKEND_DIR}/.env"
 
 log() {
     printf '[install] %s\n' "$*"
@@ -94,6 +95,15 @@ prepare_service_data_root() {
     mkdir -p "${SERVICE_DATA_ROOT}"
     chown -R "${SERVICE_USER}:${SERVICE_USER}" "${SERVICE_DATA_ROOT}"
     chmod 750 "${SERVICE_DATA_ROOT}"
+}
+
+fix_backend_env_permissions() {
+    if [[ ! -f "${BACKEND_ENV_FILE}" ]]; then
+        return
+    fi
+
+    chown root:"${SERVICE_USER}" "${BACKEND_ENV_FILE}"
+    chmod 640 "${BACKEND_ENV_FILE}"
 }
 
 ensure_backend_venv() {
@@ -207,6 +217,7 @@ run_backend_setup() {
     log "running backend HTTPS and nginx setup"
     MUSIC_SHARE_FRONTEND_DIST_DIR="${FRONTEND_DIST_DIR}" \
     MUSIC_SHARE_DATA_ROOT="${SERVICE_DATA_ROOT}" \
+    MUSIC_SHARE_SERVICE_USER="${SERVICE_USER}" \
     bash "${BACKEND_SETUP_SCRIPT}"
 }
 
@@ -235,6 +246,7 @@ main() {
     install_frontend_dependencies
     build_frontend
     run_backend_setup
+    fix_backend_env_permissions
     prepare_service_data_root
     install_systemd_wrapper
     install_systemd_unit

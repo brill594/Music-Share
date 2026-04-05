@@ -20,6 +20,7 @@ SITE_NAME="${MUSIC_SHARE_NGINX_SITE_NAME:-music-share.conf}"
 CERTBOT_MODE="${MUSIC_SHARE_CERTBOT_MODE:-auto}"
 CLOUDFLARE_PROPAGATION_SECONDS="${MUSIC_SHARE_CLOUDFLARE_PROPAGATION_SECONDS:-30}"
 DOMAIN_CHECK_PATH="/.well-known/music-share-domain-check.txt"
+SERVICE_USER="${MUSIC_SHARE_SERVICE_USER:-music-share}"
 
 NGINX_BIN=""
 CERTBOT_BIN=""
@@ -262,6 +263,23 @@ dns_cloudflare_api_token = ${token}
 EOF
     chmod 600 "${CLOUDFLARE_CREDENTIALS_FILE}"
     log "cloudflare credentials file ready: ${CLOUDFLARE_CREDENTIALS_FILE}"
+}
+
+ensure_env_file_permissions() {
+    if [[ ! -f "${ENV_FILE}" ]]; then
+        return
+    fi
+
+    if id -u "${SERVICE_USER}" >/dev/null 2>&1; then
+        chown root:"${SERVICE_USER}" "${ENV_FILE}"
+        chmod 640 "${ENV_FILE}"
+        log "backend env permissions updated for service user: ${SERVICE_USER}"
+        return
+    fi
+
+    chown root:root "${ENV_FILE}"
+    chmod 600 "${ENV_FILE}"
+    log "service user not found (${SERVICE_USER}), kept backend env readable by root only"
 }
 
 write_http_only_conf() {
@@ -739,6 +757,7 @@ PY
     upsert_env_value "MUSIC_SHARE_USE_X_ACCEL_REDIRECT" "true"
     upsert_env_value "MUSIC_SHARE_INTERNAL_MEDIA_PREFIX" "/internal-media"
     upsert_env_value "MUSIC_SHARE_DATA_ROOT" "${APP_DATA_ROOT}"
+    ensure_env_file_permissions
 
     log "setup complete"
     log "nginx config: ${NGINX_SITE_CONF}"

@@ -31,6 +31,7 @@ is_root() {
 
 load_env() {
     if [[ -f "${ENV_FILE}" ]]; then
+        [[ -r "${ENV_FILE}" ]] || fail "env file exists but current user cannot read it: ${ENV_FILE}"
         set -a
         # shellcheck disable=SC1090
         source "${ENV_FILE}"
