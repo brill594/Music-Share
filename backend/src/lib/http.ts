@@ -1,5 +1,9 @@
 import { ApiError } from "./errors";
 
+const ACCESS_CONTROL_ALLOW_HEADERS = "Content-Type, X-Client-Install-Id, X-Session-Key";
+const ACCESS_CONTROL_ALLOW_METHODS = "GET, POST, OPTIONS";
+const ACCESS_CONTROL_EXPOSE_HEADERS = "Content-Disposition, Content-Length, Content-Type, ETag";
+
 export function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type")) {
@@ -13,6 +17,35 @@ export function jsonResponse(payload: unknown, init: ResponseInit = {}): Respons
 
 export function errorResponse(status: number, detail: string): Response {
   return jsonResponse({ detail }, { status });
+}
+
+function resolveAllowedOrigin(request: Request): string {
+  const origin = request.headers.get("origin");
+  return origin && origin.trim() ? origin.trim() : "*";
+}
+
+export function withCorsHeaders(request: Request, response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", resolveAllowedOrigin(request));
+  headers.set("access-control-allow-methods", ACCESS_CONTROL_ALLOW_METHODS);
+  headers.set("access-control-allow-headers", ACCESS_CONTROL_ALLOW_HEADERS);
+  headers.set("access-control-expose-headers", ACCESS_CONTROL_EXPOSE_HEADERS);
+  headers.set("access-control-max-age", "86400");
+  headers.append("vary", "Origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+export function corsPreflightResponse(request: Request): Response {
+  return withCorsHeaders(
+    request,
+    new Response(null, {
+      status: 204,
+    }),
+  );
 }
 
 export function buildSessionCookie(options: {

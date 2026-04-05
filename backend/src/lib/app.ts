@@ -4,7 +4,15 @@ import type { AppSettings, Env } from "./config";
 import { loadSettings } from "./config";
 import { D1ShareRepository } from "./db";
 import { ApiError, isApiError } from "./errors";
-import { buildSessionCookie, errorResponse, jsonResponse, readFormFile, readFormText } from "./http";
+import {
+  buildSessionCookie,
+  corsPreflightResponse,
+  errorResponse,
+  jsonResponse,
+  readFormFile,
+  readFormText,
+  withCorsHeaders,
+} from "./http";
 import { effectiveStatus, nowIso, type SessionRecord, type ShareRecord } from "./models";
 import {
   audioResponse,
@@ -301,6 +309,9 @@ async function routeRequest(request: Request, context: AppContext): Promise<Resp
   const url = new URL(request.url);
   const segments = url.pathname.split("/").filter(Boolean).map(decodePathSegment);
 
+  if (request.method === "OPTIONS") {
+    return corsPreflightResponse(request);
+  }
   if (request.method === "POST" && url.pathname === "/auth/login") {
     return handleLogin(request, context);
   }
@@ -352,13 +363,13 @@ export async function handleRequest(
   dependencies: AppDependencies = {},
 ): Promise<Response> {
   try {
-    return await routeRequest(request, buildContext(env, dependencies));
+    return withCorsHeaders(request, await routeRequest(request, buildContext(env, dependencies)));
   } catch (error) {
     if (isApiError(error)) {
-      return errorResponse(error.status, error.detail);
+      return withCorsHeaders(request, errorResponse(error.status, error.detail));
     }
     console.error("Unhandled request error", error);
-    return errorResponse(500, "Internal Server Error");
+    return withCorsHeaders(request, errorResponse(500, "Internal Server Error"));
   }
 }
 

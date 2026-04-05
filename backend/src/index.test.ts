@@ -251,8 +251,14 @@ describe("Cloudflare Worker backend compatibility", () => {
 
     const trackResponse = await harness.request({
       path: `/track/${shareCode}`,
+      headers: {
+        Origin: "https://music-share-web-player.pages.dev",
+      },
     });
     expect(trackResponse.status).toBe(200);
+    expect(trackResponse.headers.get("access-control-allow-origin")).toBe(
+      "https://music-share-web-player.pages.dev",
+    );
     const trackPayload = (await trackResponse.json()) as Record<string, unknown>;
     expect(trackPayload.share_code).toBe(shareCode);
     expect(trackPayload).not.toHaveProperty("uuid");
@@ -260,8 +266,15 @@ describe("Cloudflare Worker backend compatibility", () => {
 
     const streamResponse = await harness.request({
       path: `/stream/${shareCode}`,
+      headers: {
+        Origin: "https://music-share-web-player.pages.dev",
+      },
     });
     expect(streamResponse.status).toBe(200);
+    expect(streamResponse.headers.get("access-control-allow-origin")).toBe(
+      "https://music-share-web-player.pages.dev",
+    );
+    expect(streamResponse.headers.get("access-control-expose-headers")).toContain("Content-Length");
     expect(streamResponse.headers.get("content-type")).toBe("audio/ogg");
     expect(streamResponse.headers.get("content-disposition")).toContain("Test_Song.ogg");
     expect(new Uint8Array(await streamResponse.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4]));
@@ -304,6 +317,26 @@ describe("Cloudflare Worker backend compatibility", () => {
       path: `/track/${shareCode}`,
     });
     expect(goneResponse.status).toBe(410);
+  });
+
+  it("handles CORS preflight requests", async () => {
+    const harness = createHarness();
+    const response = await harness.request({
+      path: "/upload",
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://music-share-web-player.pages.dev",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type,x-client-install-id,x-session-key",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://music-share-web-player.pages.dev",
+    );
+    expect(response.headers.get("access-control-allow-methods")).toContain("OPTIONS");
+    expect(response.headers.get("access-control-allow-headers")).toContain("X-Session-Key");
   });
 
   it("allows admin listing and terminating any share", async () => {

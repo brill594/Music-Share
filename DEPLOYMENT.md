@@ -264,6 +264,7 @@ VITE_API_BASE_URL=https://api.example.com/
 
 但对第一次部署来说，不需要先做这一步。
 
+
 ## 第四步：启用 GitHub Actions 自动部署
 
 仓库里已经有两个 workflow：
@@ -384,6 +385,12 @@ https://api.example.com/
 - `404` 的分享能进入 Not Found 页面
 - `410` 的分享能进入 Expired 页面
 - 音频对象读取失败时页面提示错误，而不是误判成分享不存在
+
+## 第七步：设置自定义域名
+
+**在worker和pages分别设置自定义域名与之前输入的相对应**
+
+---
 
 ## 推荐部署顺序
 
