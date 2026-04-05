@@ -27,6 +27,11 @@ function buildApiUrl(path: string): string {
   return new URL(normalizedPath, resolveApiBaseUrl()).toString();
 }
 
+function looksLikeHtmlDocument(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized.startsWith("<!doctype html") || normalized.startsWith("<html");
+}
+
 async function parseErrorDetail(response: Response): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
@@ -37,6 +42,9 @@ async function parseErrorDetail(response: Response): Promise<string> {
   }
 
   const text = await response.text();
+  if (contentType.includes("text/html") || looksLikeHtmlDocument(text)) {
+    return "";
+  }
   return text || `Request failed with status ${response.status}.`;
 }
 
@@ -139,6 +147,12 @@ export function toUserMessage(error: unknown): string {
     }
     if (error.status === 410) {
       return "分享链接已过期或已被终止。";
+    }
+    if (error.status === 403) {
+      return "音频文件被网关或静态服务器拒绝访问。优先检查 Nginx 的 /stream 反代、/internal-media/ 映射以及音频文件目录权限。";
+    }
+    if (error.status >= 500) {
+      return "服务端暂时不可用，请稍后重试。";
     }
     return error.detail || "服务暂时不可用。";
   }
