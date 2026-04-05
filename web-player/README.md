@@ -1,28 +1,21 @@
 # Music Share Web Player
 
-`web-player` 是 Music Share 的公开试听前端，负责：
+`web-player` 是 Music Share 的公开试听前端。当前版本已经按 Cloudflare Pages 独立 SPA 的部署方式整理，默认对接公开 API 域名，而不是依赖同源 Nginx 反代。
 
-- 根据分享码拉取歌曲元数据
-- 完整下载音频文件并转成浏览器本地 `Blob URL`
-- 提供自定义播放器和歌曲信息展示
-- 根据设备形态在移动端 / PC 端布局之间自动切换
+核心行为保持不变：
 
-当前实现基于：
+- 通过 `GET /track/{share_code}` 拉取元数据
+- 下载完整音频文件
+- 转为浏览器本地 `Blob URL`
+- 使用前端播放器播放
+
+## 技术栈
 
 - `Vue 3`
 - `Vite`
 - `Vue Router`
 - `Pinia`
 - `TypeScript`
-
-## 目录说明
-
-- `src/app` 应用入口和路由
-- `src/pages` 页面组件
-- `src/components` 业务组件
-- `src/stores` 状态管理
-- `src/services` API 请求和音频下载逻辑
-- `src/utils` 工具函数
 
 ## 本地开发
 
@@ -38,30 +31,95 @@ cd web-player
 npm install
 ```
 
+复制环境变量模板：
+
+```bash
+cp .env.example .env.local
+```
+
+本地联调示例：
+
+```env
+VITE_API_BASE_URL=http://localhost:2087/
+```
+
 启动开发环境：
 
 ```bash
 npm run dev
 ```
 
-默认情况下前端会把 API 基址视为当前页面同源地址，即：
+说明：
 
-- 页面在 `https://share.example.com` 时，会请求 `https://share.example.com/track/{share_code}`
-- 不额外配置 `VITE_API_BASE_URL` 也可以工作
+- 推荐始终显式配置 `VITE_API_BASE_URL`
+- 如果没有配置，前端会回退到当前页面 `origin`
+- 回退模式只作为兼容旧同源部署的兜底，不是 Cloudflare 的推荐生产方案
 
-如果你在本地把前端和后端分开跑，可以创建 `.env.local`：
+## 前后端契约
 
-```bash
-cp .env.example .env.local
-```
+前端依赖公开接口：
 
-示例：
+- `GET /track/{share_code}`
 
-```env
-VITE_API_BASE_URL=http://localhost:2087/
-```
+该接口至少需要返回以下字段：
 
-## 构建
+- `share_code`
+- `title`
+- `artist`
+- `album`
+- `duration_ms`
+- `audio_mime`
+- `stream_url`
+- `cover_url`
+- `expires_at`
+- `status`
+
+状态约定：
+
+- `404` 表示分享不存在
+- `410` 表示分享已过期或已终止
+
+兼容性要求：
+
+- `stream_url` 应该可以被浏览器直接访问
+- `cover_url` 应该是可直接访问的公开地址或 `null`
+- 推荐返回绝对 URL，便于 Pages 与 Worker 分域部署
+
+## Cloudflare Pages 部署
+
+推荐架构：
+
+- `music.example.com` 或 `share.example.com` 部署 `web-player`
+- `api.example.com` 部署 Cloudflare Worker API
+
+Pages 配置：
+
+- Build command: `npm run build`
+- Build output directory: `dist`
+- Environment variable: `VITE_API_BASE_URL=https://api.example.com/`
+
+这个项目已经内置了 Pages 所需的 SPA fallback 文件：
+
+- [public/_redirects](/Users/brilliant/repo/Music%20Share_Worker/web-player/public/_redirects)
+
+其作用是把非静态资源路径回退到 `index.html`，保证以下场景可用：
+
+- 直接访问 `/{shareCode}`
+- 刷新 `/{shareCode}`
+- 从聊天、浏览器历史或外部应用再次打开分享链接
+
+## 迁移后的前端行为
+
+为适配 Pages + Worker，前端现在有这些约束：
+
+- 请求公开元数据接口时不再依赖 cookie
+- 下载音频文件时不再携带 `credentials`
+- 元数据接口的 `404/410` 仍然驱动 Not Found / Expired 页面
+- 音频对象缺失、Worker 错误页、CORS 失败会保留在当前页面并展示错误提示，不会误跳成分享 404
+
+这意味着可以先把前端部署到 Pages，再逐步把 API 切到 Worker，而不需要继续绑定同源反代。
+
+## 构建与预览
 
 生产构建：
 
@@ -73,205 +131,35 @@ npm run build
 
 - `web-player/dist`
 
-本地预览构建结果：
+本地预览：
 
 ```bash
 npm run preview
 ```
 
-如果需要部署到子路径，例如 `/music/`，可以显式指定 Vite base：
+如果部署到子路径，可以显式指定 base：
 
 ```bash
 npm run build -- --base=/music/
 ```
 
-同时要确保后端生成的分享地址也指向这个子路径，见下面的“后端联动配置”。
+同时要确保后端生成的分享地址与该子路径一致。
 
-## 路由与部署要求
+## 验收清单
 
-Web Player 使用 `history` 路由，主要路径有：
+上线前至少验证：
 
-- `/:shareCode`
-- `/expired`
-- 其他路径回落到前端 404 页面
+- Pages Preview 中直接访问 `/{shareCode}` 能正常进入播放页
+- 刷新 `/{shareCode}` 不会返回静态 404
+- `GET /track/{share_code}` 返回 `200` 时，页面能完成元数据加载和整文件下载
+- `GET /track/{share_code}` 返回 `404` 时，进入前端 Not Found 页面
+- `GET /track/{share_code}` 返回 `410` 时，进入前端 Expired 页面
+- `stream_url` 指向的 Worker/R2 资源异常时，页面显示错误提示而不是误判成分享不存在
 
-因此静态托管必须支持 SPA fallback：
+## 后续可选项
 
-- 命中真实静态资源时直接返回文件
-- 其他非 API 路径统一回退到 `index.html`
+当前迁移只覆盖“可在 Pages 独立部署并接入 Worker API”的基础能力。后续如果要继续优化，可以再单独处理：
 
-如果未配置 fallback，直接访问分享链接时会得到服务器 404，而不是前端页面。
-
-## 推荐部署方式
-
-当前后端没有启用 CORS，中短期内推荐使用“前端静态文件 + 后端 API 同源反代”方案。
-
-推荐原因：
-
-- 前端默认就是按同源请求 API
-- 不需要额外处理跨域
-- `GET /track/{share_code}` 返回的 `stream_url`、`cover_url` 能直接在同域下工作
-- 更适合浏览器完整下载音频文件的场景
-
-## 与后端联动配置
-
-部署前建议确认后端至少配置以下环境变量：
-
-- `MUSIC_SHARE_PUBLIC_API_BASE_URL`
-- `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
-- `MUSIC_SHARE_USE_X_ACCEL_REDIRECT`
-
-常见配置方式：
-
-1. 前后端同域部署在 `https://share.example.com`
-
-```env
-MUSIC_SHARE_PUBLIC_API_BASE_URL=https://share.example.com
-MUSIC_SHARE_PUBLIC_SHARE_BASE_URL=https://share.example.com
-MUSIC_SHARE_USE_X_ACCEL_REDIRECT=true
-```
-
-2. 前端部署在子路径 `https://share.example.com/music/`
-
-```env
-MUSIC_SHARE_PUBLIC_API_BASE_URL=https://share.example.com
-MUSIC_SHARE_PUBLIC_SHARE_BASE_URL=https://share.example.com/music
-MUSIC_SHARE_USE_X_ACCEL_REDIRECT=true
-```
-
-第二种场景下，前端构建也要使用对应 base：
-
-```bash
-npm run build -- --base=/music/
-```
-
-## Nginx 同源部署示例
-
-下面的示例适合把 Web Player 构建产物和后端统一挂在同一个域名下：
-
-```nginx
-server {
-    listen 80;
-    server_name share.example.com;
-
-    root /srv/music-share/web-player/dist;
-    index index.html;
-
-    location /assets/ {
-        try_files $uri =404;
-        access_log off;
-        expires 7d;
-        add_header Cache-Control "public, max-age=604800, immutable";
-    }
-
-    location /internal-media/ {
-        internal;
-        alias /srv/music-share/backend/data/storage/;
-    }
-
-    location ~ ^/(track|stream|cover|auth|upload|client|admin)(/|$) {
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://127.0.0.1:2087;
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
-
-说明：
-
-- `/assets/` 用于返回 Vite 构建出的静态资源
-- `/internal-media/` 是后端 `X-Accel-Redirect` 方案必须的内部映射
-- `/track`、`/stream`、`/cover` 等 API 请求会被转发到后端
-- 其余路径如 `/abcd1234`、`/expired` 会回退到前端 `index.html`
-
-如果你已经在 API 侧有单独的 Nginx，可以把上面的静态托管逻辑合并进去；`/internal-media/` 的配置思路与 [backend/nginx.example.conf](/Users/brilliant/repo/Music%20Share/backend/nginx.example.conf) 一致。
-
-## 分离域名部署说明
-
-理论上前端也可以独立部署到 CDN 或另一个域名，并通过 `VITE_API_BASE_URL` 指向后端 API。
-
-但以当前仓库代码为准，这不是默认推荐方案，因为：
-
-- 后端当前没有配置 CORS
-- 前端请求会携带 `credentials: "include"`
-- `stream_url` 和 `cover_url` 也会走后端公开地址
-
-如果确实要分离域名，至少需要你在后端补齐：
-
-- 合法的 CORS 响应头
-- 对应域名的 `Access-Control-Allow-Origin`
-- `Access-Control-Allow-Credentials`
-
-在没有这些改造前，建议坚持同源部署。
-
-## 发布步骤建议
-
-1. 在服务器上部署并验证后端可用。
-2. 设置后端公开地址：
-   `MUSIC_SHARE_PUBLIC_API_BASE_URL` 和 `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`。
-3. 在 `web-player` 执行 `npm install && npm run build`。
-4. 将 `dist/` 上传到静态目录，例如 `/srv/music-share/web-player/dist`。
-5. 配置 Nginx：
-   需要同时覆盖静态资源、SPA fallback、API 反代和 `/internal-media/`。
-6. 访问一个真实分享链接进行验证：
-   检查元数据、封面、完整音频下载和播放器是否正常工作。
-
-## 验证清单
-
-建议上线前至少确认：
-
-- 打开 `/{shareCode}` 能正常进入播放页
-- 刷新 `/{shareCode}` 不会返回 Nginx/静态服务器 404
-- `GET /track/{share_code}` 返回 200 时，页面能进入 ready 状态
-- 音频可以完整下载并开始播放
-- 链接失效时能跳转到 `/expired`
-- 手机、平板、折叠屏和桌面端布局切换符合预期
-
-## 常见问题
-
-### 1. 直接访问分享链接返回 404
-
-通常是因为静态服务器没有配置 SPA fallback。
-
-需要确保：
-
-```nginx
-location / {
-    try_files $uri $uri/ /index.html;
-}
-```
-
-### 2. 页面能打开，但请求 `/track/...` 失败
-
-优先检查：
-
-- 反向代理是否把 `/track`、`/stream`、`/cover` 转给了后端
-- `MUSIC_SHARE_PUBLIC_API_BASE_URL` 是否配置成了外部可访问地址
-- 前端是否错误配置了 `VITE_API_BASE_URL`
-
-### 3. 音频接口返回 200，但浏览器无法播放
-
-优先检查：
-
-- 后端音频 MIME 类型是否正确
-- Nginx 是否保留了后端返回头
-- `X-Accel-Redirect` 的 `/internal-media/` 映射是否正确
-
-### 4. 前端在子路径下打开后资源 404
-
-通常是构建时没有带上正确的 `base`。例如部署到 `/music/` 时，需要：
-
-```bash
-npm run build -- --base=/music/
-```
-
-同时还要把后端的 `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL` 配成：
-
-```env
-https://share.example.com/music
-```
+- `public/_headers` 的安全头或缓存策略
+- 对 API 域名增加 `preconnect`
+- 将整文件下载升级为支持 Range 的边下边播

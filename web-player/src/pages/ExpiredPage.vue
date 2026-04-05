@@ -37,9 +37,8 @@ async function retry(): Promise<void> {
         <p class="state-page__eyebrow">Link Expired</p>
         <h1 class="state-page__title">这个试听链接已经失效</h1>
         <p class="state-page__body">
-          分享内容可能已经过期，或者被上传方手动终止。该页面不保留长期内容，也不会继续提供音频访问。
+          分享内容可能已经过期，或者被上传方手动停止，当前无法继续播放。
         </p>
-        <p v-if="shareCode" class="state-page__code">分享码：{{ shareCode }}</p>
         <div class="state-page__actions">
           <button class="state-page__primary" type="button" @click="void retry()">重新检测一次</button>
         </div>

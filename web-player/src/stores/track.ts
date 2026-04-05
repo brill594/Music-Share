@@ -98,14 +98,14 @@ export const useTrackStore = defineStore("track", () => {
 
       clearAudioUrl();
 
-      if (error instanceof HttpError && error.status === 410) {
+      if (error instanceof HttpError && error.scope === "metadata" && error.status === 410) {
         viewState.value = "expired";
         phase.value = null;
         errorMessage.value = "";
         return "expired";
       }
 
-      if (error instanceof HttpError && error.status === 404) {
+      if (error instanceof HttpError && error.scope === "metadata" && error.status === 404) {
         track.value = null;
         viewState.value = "error";
         phase.value = null;

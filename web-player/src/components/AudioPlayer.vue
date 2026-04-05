@@ -51,7 +51,7 @@ const progressPercent = computed(() => {
 });
 
 const sliderStyle = computed(() => ({
-  background: `linear-gradient(90deg, rgba(255, 154, 60, 0.96) 0%, rgba(123, 217, 207, 0.96) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) 100%)`,
+  background: `linear-gradient(90deg, rgba(77, 217, 191, 0.96) 0%, rgba(121, 255, 203, 0.96) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) 100%)`,
 }));
 
 async function togglePlayback(): Promise<void> {
@@ -147,7 +147,6 @@ onBeforeUnmount(() => {
 
     <div class="audio-player__header">
       <div>
-        <p class="audio-player__eyebrow">Embedded Player</p>
         <h2 class="audio-player__title">{{ trackTitle }}</h2>
       </div>
 
@@ -194,10 +193,6 @@ onBeforeUnmount(() => {
         </button>
         <button class="audio-player__ghost" type="button" @click="stopPlayback">停止</button>
       </div>
-
-      <p class="audio-player__hint">
-        音频已完整下载到当前浏览器，暂停、恢复和拖动都不会再次请求后端。
-      </p>
     </div>
   </section>
 </template>
@@ -209,7 +204,7 @@ onBeforeUnmount(() => {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(135deg, rgba(255, 154, 60, 0.12), transparent 40%),
+    linear-gradient(135deg, rgba(121, 255, 203, 0.10), transparent 40%),
     rgba(255, 255, 255, 0.04);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
@@ -223,14 +218,6 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-}
-
-.audio-player__eyebrow {
-  margin: 0 0 8px;
-  color: var(--secondary);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-size: 0.76rem;
 }
 
 .audio-player__title {
@@ -257,7 +244,7 @@ onBeforeUnmount(() => {
 }
 
 .audio-player__mode-button--active {
-  background: rgba(255, 154, 60, 0.2);
+  background: rgba(121, 255, 203, 0.18);
   color: var(--text);
 }
 
@@ -281,8 +268,8 @@ onBeforeUnmount(() => {
   height: 20px;
   border: 0;
   border-radius: 50%;
-  background: #fff5e8;
-  box-shadow: 0 0 0 5px rgba(255, 154, 60, 0.16);
+  background: #e8fff8;
+  box-shadow: 0 0 0 5px rgba(121, 255, 203, 0.22);
 }
 
 .audio-player__range::-moz-range-thumb {
@@ -290,8 +277,8 @@ onBeforeUnmount(() => {
   height: 20px;
   border: 0;
   border-radius: 50%;
-  background: #fff5e8;
-  box-shadow: 0 0 0 5px rgba(255, 154, 60, 0.16);
+  background: #e8fff8;
+  box-shadow: 0 0 0 5px rgba(121, 255, 203, 0.22);
 }
 
 .audio-player__times {
@@ -321,17 +308,12 @@ onBeforeUnmount(() => {
 }
 
 .audio-player__primary {
-  background: linear-gradient(120deg, rgba(255, 154, 60, 0.92), rgba(255, 120, 72, 0.92));
+  background: linear-gradient(120deg, rgba(121, 255, 203, 0.90), rgba(77, 217, 191, 0.90));
+  color: #0a1f18;
 }
 
 .audio-player__ghost {
   background: rgba(255, 255, 255, 0.06);
-}
-
-.audio-player__hint {
-  margin: 0;
-  line-height: 1.6;
-  color: var(--muted);
 }
 
 .app-shell--mobile .audio-player {
@@ -369,6 +351,10 @@ onBeforeUnmount(() => {
 .app-shell--mobile .audio-player__ghost {
   min-width: 0;
   width: 100%;
+}
+
+.app-shell--mobile .audio-player__primary {
+  color: #0a1f18;
 }
 
 @media (max-width: 720px) {

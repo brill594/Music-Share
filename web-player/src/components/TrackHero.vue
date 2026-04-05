@@ -8,7 +8,6 @@ const props = defineProps<{
   title: string;
   artist: string;
   album: string;
-  shareCode: string;
   durationMs: number;
   audioMime: string;
   coverUrl: string | null;
@@ -45,13 +44,9 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
         :alt="`${title} cover`"
         @error="coverFailed = true"
       />
-      <div class="track-hero__cover-badge">
-        {{ coverFailed || !coverUrl ? "占位封面" : "封面已就绪" }}
-      </div>
     </div>
 
     <div class="track-hero__body">
-      <p class="track-hero__eyebrow">Temporary Listening Session</p>
       <h1 class="track-hero__title">{{ title }}</h1>
       <p class="track-hero__artist">{{ artistLabel }}</p>
       <p class="track-hero__album">{{ albumLabel }}</p>
@@ -59,7 +54,6 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
       <div class="track-hero__chips">
         <span>{{ formatDurationMs(durationMs) }}</span>
         <span>{{ formatMimeLabel(audioMime) }}</span>
-        <span>{{ shareCode }}</span>
       </div>
 
       <div class="track-hero__meta-grid">
@@ -79,7 +73,7 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 <style scoped>
 .track-hero {
   display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
   gap: clamp(22px, 4vw, 36px);
   align-items: center;
 }
@@ -90,7 +84,7 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   padding: 14px;
   border-radius: 28px;
   background:
-    linear-gradient(145deg, rgba(255, 154, 60, 0.26), rgba(123, 217, 207, 0.16)),
+    linear-gradient(145deg, rgba(121, 255, 203, 0.22), rgba(77, 217, 191, 0.14)),
     rgba(255, 255, 255, 0.04);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.08),
@@ -106,30 +100,9 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   background: rgba(255, 255, 255, 0.08);
 }
 
-.track-hero__cover-badge {
-  position: absolute;
-  right: 22px;
-  bottom: 22px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(8, 16, 23, 0.76);
-  color: var(--text);
-  font-size: 0.82rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .track-hero__body {
   display: grid;
   gap: 14px;
-}
-
-.track-hero__eyebrow {
-  margin: 0;
-  color: var(--secondary);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  font-size: 0.76rem;
 }
 
 .track-hero__title {
@@ -193,6 +166,16 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   font-size: 1rem;
 }
 
+.app-shell--desktop .track-hero {
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 22px;
+}
+
+.app-shell--desktop .track-hero__cover-panel {
+  max-width: 100%;
+}
+
 .app-shell--mobile .track-hero {
   grid-template-columns: 1fr;
   gap: 18px;
@@ -202,12 +185,6 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   max-width: none;
   padding: 12px;
   border-radius: 24px;
-}
-
-.app-shell--mobile .track-hero__cover-badge {
-  right: 16px;
-  bottom: 16px;
-  padding: 7px 10px;
 }
 
 .app-shell--mobile .track-hero__body {

@@ -34,9 +34,8 @@ async function retry(): Promise<void> {
         <p class="state-page__eyebrow">Track Missing</p>
         <h1 class="state-page__title">没有找到对应的分享内容</h1>
         <p class="state-page__body">
-          这个地址可能拼错了，也可能该分享已经被系统清理。Web Player 只处理短期试听，不保存历史列表。
+          这个地址可能输入有误，也可能该分享已经不可用。
         </p>
-        <p v-if="shareCode" class="state-page__code">尝试的分享码：{{ shareCode }}</p>
         <div class="state-page__actions">
           <button
             v-if="shareCode"

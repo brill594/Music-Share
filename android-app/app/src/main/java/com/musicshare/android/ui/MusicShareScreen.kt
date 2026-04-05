@@ -138,7 +138,7 @@ private fun CurrentTrackTab(
         HighlightCard(
             title = if (appState.hasMusicTreePermission()) "目录授权已保存" else "需要授权音乐目录",
             body = if (appState.hasMusicTreePermission()) {
-                "当前已保存 SAF treeUri。若切歌后 documentUri 失效，可重新授权。"
+                "当前已保存音乐目录授权。如遇到无法读取当前歌曲，可重新授权。"
             } else {
                 "首次使用前，请通过系统文档选择器授权 Poweramp 所在音乐目录。"
             },
@@ -160,10 +160,6 @@ private fun CurrentTrackTab(
                 body = buildString {
                     append(track.subtitle())
                     append("\n时长：${formatDurationLabel(track.durationMs)}")
-                    append("\n播放状态：${track.playbackState.ifBlank { "unknown" }}")
-                    append("\nPoweramp 路径：${track.powerampPath}")
-                    append("\nDocumentUri：${track.documentUri.ifBlank { "未解析" }}")
-                    append("\n更新时间：${formatDisplayTime(track.updatedAt)}")
                 },
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -238,9 +234,9 @@ private fun ShareManagementTab(
             title = "认证状态",
             body = buildString {
                 append("当前角色：${appState.session.role.ifBlank { "未认证" }}")
-                append("\n认证类型：${appState.session.authType.ifBlank { "-" }}")
-                append("\n过期时间：${appState.session.expiresAt.ifBlank { "-" }}")
-                append("\n最后成功认证：${appState.authLog.lastAuthSucceededAt.ifBlank { "-" }}")
+                if (appState.session.expiresAt.isNotBlank()) {
+                    append("\n有效至：${formatDisplayTime(appState.session.expiresAt)}")
+                }
             },
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -4,3 +4,7 @@
 __pycache__/
 *.egg-info/
 data/
+coverage/
+node_modules/
+.wrangler/
+*.tsbuildinfo
