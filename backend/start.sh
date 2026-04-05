@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+umask 0077
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/.env"
@@ -81,6 +82,7 @@ is_process_alive() {
 start_backend_background() {
     local python_bin="$1"
     mkdir -p "${LOG_DIR}" "${RUN_DIR}"
+    chmod 700 "${LOG_DIR}" "${RUN_DIR}"
 
     if [[ -f "${PID_FILE}" ]]; then
         local existing_pid

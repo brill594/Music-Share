@@ -14,6 +14,15 @@ LOGGER = logging.getLogger("music_share.backend")
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _chmod_if_possible(path: Path, mode: int) -> None:
+    try:
+        path.chmod(mode)
+    except FileNotFoundError:
+        return
+    except PermissionError:
+        LOGGER.warning("Unable to set mode %s on %s", oct(mode), path)
+
+
 def _get_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -86,6 +95,8 @@ class Settings:
     def ensure_paths(self) -> None:
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.storage_root.mkdir(parents=True, exist_ok=True)
+        _chmod_if_possible(self.data_root, 0o751)
+        _chmod_if_possible(self.storage_root, 0o755)
 
 
 def load_settings() -> Settings:
@@ -163,6 +174,7 @@ def _write_runtime_secrets(settings: Settings) -> None:
         json.dumps(payload, ensure_ascii=True, indent=2),
         encoding="utf-8",
     )
+    _chmod_if_possible(settings.runtime_secret_path, 0o600)
     LOGGER.warning(
         "Runtime passwords written to %s. Move them to environment variables before production.",
         settings.runtime_secret_path,

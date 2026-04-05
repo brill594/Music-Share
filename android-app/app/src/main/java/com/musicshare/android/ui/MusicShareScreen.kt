@@ -223,6 +223,18 @@ private fun ShareManagementTab(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         HighlightCard(
+            title = "后端同步",
+            body = "主动从后端拉取目前已有的音乐与分享信息，用于手动刷新管理列表。",
+        ) {
+            Button(
+                onClick = onRefreshShares,
+                enabled = !isRefreshing,
+            ) {
+                Text(if (isRefreshing) "正在从后端拉取..." else "从后端拉取已有音乐信息")
+            }
+        }
+
+        HighlightCard(
             title = "认证状态",
             body = buildString {
                 append("当前角色：${appState.session.role.ifBlank { "未认证" }}")
@@ -234,9 +246,6 @@ private fun ShareManagementTab(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onAuthenticateUser) { Text("获取用户会话") }
                 Button(onClick = onAuthenticateAdmin) { Text("获取管理员会话") }
-                TextButton(onClick = onRefreshShares) {
-                    Text(if (isRefreshing) "刷新中..." else "刷新列表")
-                }
             }
         }
 

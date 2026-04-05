@@ -67,6 +67,7 @@ class Database:
                 """
             )
             connection.commit()
+        self._apply_private_permissions()
 
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, check_same_thread=False)
@@ -251,3 +252,9 @@ class Database:
             else None,
             status=row["status"],
         )
+
+    def _apply_private_permissions(self) -> None:
+        for suffix in ("", "-wal", "-shm"):
+            candidate = Path(f"{self.path}{suffix}")
+            if candidate.exists():
+                candidate.chmod(0o600)

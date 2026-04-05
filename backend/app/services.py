@@ -97,6 +97,7 @@ class StorageService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.settings.storage_root.mkdir(parents=True, exist_ok=True)
+        self.settings.storage_root.chmod(0o755)
 
     def create_share_record(
         self,
@@ -142,6 +143,7 @@ class StorageService:
     ) -> ShareRecord:
         share_dir = self.settings.storage_root / share.uuid
         share_dir.mkdir(parents=True, exist_ok=True)
+        share_dir.chmod(0o755)
         audio_path = self.settings.storage_root / share.audio_path
         try:
             await self._write_upload(audio_upload, audio_path, self.settings.max_audio_upload_bytes)
@@ -171,6 +173,7 @@ class StorageService:
             json.dumps(share.metadata_payload(), ensure_ascii=True, indent=2),
             encoding="utf-8",
         )
+        meta_path.chmod(0o600)
 
     def delete_share_assets(self, share: ShareRecord) -> None:
         shutil.rmtree(self.settings.storage_root / share.uuid, ignore_errors=True)
@@ -221,6 +224,7 @@ class StorageService:
         max_bytes: int,
     ) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.parent.chmod(0o755)
         written = 0
         await upload.seek(0)
         with destination.open("wb") as handle:
@@ -235,6 +239,7 @@ class StorageService:
                         detail=f"Upload exceeds {max_bytes} bytes.",
                     )
                 handle.write(chunk)
+        destination.chmod(0o644)
         await upload.close()
 
 

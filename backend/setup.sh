@@ -21,6 +21,9 @@ CERTBOT_MODE="${MUSIC_SHARE_CERTBOT_MODE:-auto}"
 CLOUDFLARE_PROPAGATION_SECONDS="${MUSIC_SHARE_CLOUDFLARE_PROPAGATION_SECONDS:-30}"
 DOMAIN_CHECK_PATH="/.well-known/music-share-domain-check.txt"
 SERVICE_USER="${MUSIC_SHARE_SERVICE_USER:-music-share}"
+CERTBOT_DEPLOY_HOOK="${MUSIC_SHARE_CERTBOT_DEPLOY_HOOK:-}"
+CERTBOT_PRE_HOOK="${MUSIC_SHARE_CERTBOT_PRE_HOOK:-}"
+CERTBOT_POST_HOOK="${MUSIC_SHARE_CERTBOT_POST_HOOK:-}"
 
 NGINX_BIN=""
 CERTBOT_BIN=""
@@ -280,6 +283,12 @@ ensure_env_file_permissions() {
     chown root:root "${ENV_FILE}"
     chmod 600 "${ENV_FILE}"
     log "service user not found (${SERVICE_USER}), kept backend env readable by root only"
+}
+
+ensure_runtime_data_permissions() {
+    mkdir -p "${APP_DATA_ROOT}" "${STORAGE_DIR}"
+    chmod 751 "${APP_DATA_ROOT}"
+    chmod 755 "${STORAGE_DIR}"
 }
 
 write_http_only_conf() {
@@ -578,14 +587,26 @@ run_certbot_once() {
     local nginx_was_running="false"
     local certbot_rc=0
 
+    if [[ -n "${CERTBOT_DEPLOY_HOOK}" ]]; then
+        certbot_args+=(--deploy-hook "${CERTBOT_DEPLOY_HOOK}")
+    fi
+
     case "${mode}" in
         webroot)
             certbot_args+=(--webroot -w "${ACME_WEBROOT}")
             ;;
         standalone)
             certbot_args+=(--standalone --preferred-challenges http)
-            if stop_nginx_if_running; then
-                nginx_was_running="true"
+            if [[ -n "${CERTBOT_PRE_HOOK}" ]]; then
+                certbot_args+=(--pre-hook "${CERTBOT_PRE_HOOK}")
+            fi
+            if [[ -n "${CERTBOT_POST_HOOK}" ]]; then
+                certbot_args+=(--post-hook "${CERTBOT_POST_HOOK}")
+            fi
+            if [[ -z "${CERTBOT_PRE_HOOK}" || -z "${CERTBOT_POST_HOOK}" ]]; then
+                if stop_nginx_if_running; then
+                    nginx_was_running="true"
+                fi
             fi
             ;;
         dns-cloudflare)
@@ -698,6 +719,7 @@ main() {
     prepare_nginx_layout
 
     mkdir -p "${APP_DATA_ROOT}" "${STORAGE_DIR}" "${ACME_WEBROOT}" "${LE_CONFIG_DIR}" "${LE_WORK_DIR}" "${LE_LOGS_DIR}"
+    ensure_runtime_data_permissions
     ensure_acme_webroot_permissions
 
     if [[ -n "${FRONTEND_DIST_DIR}" ]]; then
