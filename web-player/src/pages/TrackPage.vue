@@ -34,12 +34,12 @@ const pageBackdropStyle = computed(() => {
 const audioDownloadLabel = computed(() => {
   const { loaded, total } = downloadProgress.value;
   if (total) {
-    return `已下载 ${formatBytes(loaded)} / ${formatBytes(total)}，完整下载后才会开始播放。`;
+    return `已下载 ${formatBytes(loaded)} / ${formatBytes(total)}。`;
   }
   if (loaded > 0) {
-    return `已下载 ${formatBytes(loaded)}，正在继续拉取完整音频。`;
+    return `已下载 ${formatBytes(loaded)}。`;
   }
-  return "浏览器正在完整下载音频文件，完成后会转成本地 Blob URL。";
+  return "正在准备音频文件。";
 });
 
 const bannerTitle = computed(() => {
@@ -60,15 +60,15 @@ const bannerDetail = computed(() => {
     return errorMessage.value || "网络请求失败，请稍后重试。";
   }
   if (phase.value === "metadata") {
-    return "正在请求歌曲元数据并检查链接状态。";
+    return "正在加载分享内容。";
   }
   if (phase.value === "audio") {
     return audioDownloadLabel.value;
   }
   if (track.value) {
-    return `链接将于 ${formatDateTime(track.value.expires_at)} 失效。播放器只会在本地完整缓存后工作。`;
+    return `链接将于 ${formatDateTime(track.value.expires_at)} 失效。`;
   }
-  return "临时试听链接加载中。";
+  return "正在准备试听页面。";
 });
 
 const bannerTone = computed<"info" | "warning" | "danger" | "success">(() => {
@@ -151,7 +151,6 @@ onBeforeUnmount(() => {
                 :title="track.title"
                 :artist="track.artist"
                 :album="track.album"
-                :share-code="track.share_code"
                 :duration-ms="track.duration_ms"
                 :audio-mime="track.audio_mime"
                 :cover-url="track.cover_url"
@@ -171,7 +170,7 @@ onBeforeUnmount(() => {
               <section v-else class="track-page__pending-audio">
                 <p class="track-page__pending-title">播放器即将就绪</p>
                 <p class="track-page__pending-detail">
-                  必须先把整首音频下载到本地，随后才会显示播放控件并允许拖动进度。
+                  正在准备音频，完成后即可播放。
                 </p>
               </section>
             </div>
@@ -247,24 +246,25 @@ onBeforeUnmount(() => {
 }
 
 .app-shell--desktop .track-page__content-grid {
-  grid-template-columns: minmax(0, 0.92fr) minmax(360px, 1.08fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
   align-items: start;
+  gap: 28px;
 }
 
 .app-shell--desktop .track-page__hero-slot {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 1 / span 2;
 }
 
 .app-shell--desktop .track-page__player-slot {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1;
   position: sticky;
   top: 24px;
 }
 
 .app-shell--desktop .track-page__copy-slot {
-  grid-column: 1;
+  grid-column: 2;
   grid-row: 2;
 }
 
@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
   width: min(100%, 320px);
   aspect-ratio: 1;
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(255, 154, 60, 0.2), rgba(123, 217, 207, 0.1));
+  background: linear-gradient(135deg, rgba(121, 255, 203, 0.2), rgba(77, 217, 191, 0.1));
   animation: placeholder-pulse 1.6s ease-in-out infinite;
 }
 

@@ -77,7 +77,6 @@ onBeforeUnmount(() => {
   <section class="copy-panel">
     <div class="copy-panel__header">
       <div>
-        <p class="copy-panel__eyebrow">Metadata Copy</p>
         <h2 class="copy-panel__title">复制分享文案</h2>
       </div>
       <button class="copy-panel__button" type="button" :disabled="!previewText" @click="void handleCopy()">
@@ -120,7 +119,7 @@ onBeforeUnmount(() => {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(145deg, rgba(123, 217, 207, 0.12), transparent 38%),
+    linear-gradient(145deg, rgba(121, 255, 203, 0.10), transparent 38%),
     rgba(255, 255, 255, 0.04);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
@@ -132,14 +131,6 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 
-.copy-panel__eyebrow {
-  margin: 0 0 8px;
-  color: var(--secondary);
-  font-size: 0.76rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
 .copy-panel__title {
   margin: 0;
   font-size: clamp(1.35rem, 2vw, 1.8rem);
@@ -148,7 +139,7 @@ onBeforeUnmount(() => {
 .copy-panel__button {
   padding: 12px 18px;
   border-radius: 999px;
-  background: rgba(123, 217, 207, 0.16);
+  background: rgba(121, 255, 203, 0.16);
   color: var(--text);
 }
 

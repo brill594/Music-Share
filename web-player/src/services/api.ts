@@ -149,7 +149,7 @@ export function toUserMessage(error: unknown): string {
       return "分享链接已过期或已被终止。";
     }
     if (error.status === 403) {
-      return "音频文件被网关或静态服务器拒绝访问。优先检查 Nginx 的 /stream 反代、/internal-media/ 映射以及音频文件目录权限。";
+      return "音频文件暂时无法访问，请稍后重试。";
     }
     if (error.status >= 500) {
       return "服务端暂时不可用，请稍后重试。";
