@@ -95,7 +95,9 @@ cd android-app
 - `MUSIC_SHARE_USER_PASSWORD`
 - `MUSIC_SHARE_ADMIN_PASSWORD`
 
-可以通过 Wrangler 写入：
+不要把这两个值写进 `wrangler.toml` 或提交到仓库。
+
+最简单的做法是直接写入 Cloudflare Worker secret：
 
 ```bash
 cd backend
@@ -117,6 +119,54 @@ npx wrangler secret put MUSIC_SHARE_ADMIN_PASSWORD
 - `MUSIC_SHARE_MAX_COVER_UPLOAD_BYTES`
 - `MUSIC_SHARE_MAX_DURATION_MS`
 - `MUSIC_SHARE_SESSION_COOKIE_NAME`
+
+### 2.1 用 GitHub Actions secrets 管理更合适
+
+如果你通过 GitHub Actions 自动部署，推荐这样分层：
+
+- GitHub Actions Secrets：
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+  - `MUSIC_SHARE_USER_PASSWORD`
+  - `MUSIC_SHARE_ADMIN_PASSWORD`
+- GitHub Actions Variables：
+  - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
+  - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
+
+仓库里已经补了 workflow：
+
+- [.github/workflows/deploy-backend.yml](/Users/brilliant/repo/Music%20Share_Worker/.github/workflows/deploy-backend.yml)
+
+当前触发方式：
+
+- push 到 `main`
+- push 到 `cloud`
+- 手动 `workflow_dispatch`
+
+推荐原则：
+
+- 真正的密钥和密码放 `Secrets`
+- 公开域名、bucket 名、环境名这类非敏感值放 `Variables` 或 `wrangler.toml`
+
+这个 workflow 会自动做这些事：
+
+1. `npm ci`
+2. `npm run typecheck`
+3. `npm test`
+4. `wrangler d1 migrations apply MUSIC_SHARE_DB --yes`
+5. `wrangler deploy`
+6. 把 GitHub Secrets / Variables 同步成 Worker 运行时 secret
+
+启用前至少要在 GitHub 仓库设置中补齐：
+
+- Repository Secrets:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+  - `MUSIC_SHARE_USER_PASSWORD`
+  - `MUSIC_SHARE_ADMIN_PASSWORD`
+- Repository Variables:
+  - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
+  - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
 
 ### 3. 执行 D1 迁移
 
@@ -186,7 +236,15 @@ npm install
 - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
 - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
 
-示例：
+密码不要明文写在仓库里。推荐优先级：
+
+1. GitHub Actions Secrets 或其他 CI secret manager
+2. Cloudflare Worker secrets
+3. 本地人工执行 `wrangler secret put`
+
+如果你已经启用了上面的 GitHub Actions workflow，这两个密码和公开地址会由 workflow 自动同步到 Worker，不需要再手工执行。
+
+手工方式示例：
 
 ```bash
 cd backend
@@ -255,6 +313,31 @@ Pages 环境变量至少需要：
 VITE_API_BASE_URL=https://api.example.com/
 ```
 
+如果通过 GitHub Actions 自动部署 Pages，仓库里已经补了：
+
+- [.github/workflows/deploy-web-player.yml](/Users/brilliant/repo/Music%20Share_Worker/.github/workflows/deploy-web-player.yml)
+
+这个 workflow 的必需配置是：
+
+- Repository Secrets:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+- Repository Variables:
+  - `CLOUDFLARE_PAGES_PROJECT_NAME`
+  - `VITE_API_BASE_URL`
+
+当前触发方式：
+
+- push 到 `main`
+- push 到 `cloud`
+- 面向 `main/cloud` 的 pull request 会生成 Pages preview
+- 手动 `workflow_dispatch`
+
+注意：
+
+- `CLOUDFLARE_PAGES_PROJECT_NAME` 必须是已经创建好的 Pages 项目名
+- Pages 项目的 production branch 应与你实际用来发正式版的分支一致，例如 `main` 或 `cloud`
+
 ### 2. 构建前端
 
 构建前端：
@@ -285,8 +368,9 @@ npm run build
 1. 先准备后端依赖资源：D1、R2、Worker secrets、公开域名。
 2. 执行后端 D1 迁移并部署 Worker。
 3. 用真实 API 域名先验证 `login`、`upload`、`track`、`stream`、`cover`。
-4. 后端稳定后，再部署 Web Player 到 Pages，并把 `VITE_API_BASE_URL` 指向正式 API 域名。
-5. 最后用真实分享链接做端到端验证，确认分享页、音频下载、封面读取、404/410 页面都正常。
+4. 后端稳定后，先在 GitHub 仓库配置 Pages workflow 所需的 `CLOUDFLARE_PAGES_PROJECT_NAME` 和 `VITE_API_BASE_URL`。
+5. 再部署 Web Player 到 Pages，确保 `VITE_API_BASE_URL` 指向正式 API 域名。
+6. 最后用真实分享链接做端到端验证，确认分享页、音频下载、封面读取、404/410 页面都正常。
 
 ## 进一步说明
 

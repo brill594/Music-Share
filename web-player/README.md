@@ -98,6 +98,24 @@ Pages 配置：
 - Build output directory: `dist`
 - Environment variable: `VITE_API_BASE_URL=https://api.example.com/`
 
+GitHub Actions 自动部署已提供：
+
+- [.github/workflows/deploy-web-player.yml](/Users/brilliant/repo/Music%20Share_Worker/.github/workflows/deploy-web-player.yml)
+
+启用前至少配置：
+
+- Repository Secrets:
+  - `CLOUDFLARE_API_TOKEN`
+  - `CLOUDFLARE_ACCOUNT_ID`
+- Repository Variables:
+  - `CLOUDFLARE_PAGES_PROJECT_NAME`
+  - `VITE_API_BASE_URL`
+
+这个 workflow 会：
+
+- 在 `main` 和 `cloud` 分支 push 时自动构建并部署
+- 在面向 `main/cloud` 的 pull request 上创建 Pages preview 部署
+
 这个项目已经内置了 Pages 所需的 SPA fallback 文件：
 
 - [public/_redirects](/Users/brilliant/repo/Music%20Share_Worker/web-player/public/_redirects)

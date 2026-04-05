@@ -78,6 +78,13 @@ npm install
 - `MUSIC_SHARE_MAX_DURATION_MS`
 - `MUSIC_SHARE_SESSION_COOKIE_NAME`
 
+安全建议：
+
+- 不要把 `MUSIC_SHARE_USER_PASSWORD` 或 `MUSIC_SHARE_ADMIN_PASSWORD` 明文写进仓库
+- 这两个值应通过 Cloudflare Worker secret 或 CI secret manager 注入
+- `MUSIC_SHARE_PUBLIC_API_BASE_URL`、`MUSIC_SHARE_PUBLIC_SHARE_BASE_URL` 这类公开地址不是敏感信息，可以放 `vars`
+- 如果使用 GitHub Actions 自动部署，优先放到仓库 `Secrets/Variables`，由 workflow 同步到 Worker
+
 ### 3. 初始化 D1
 
 ```bash
