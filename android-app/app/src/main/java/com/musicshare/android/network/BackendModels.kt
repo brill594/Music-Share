@@ -54,4 +54,5 @@ data class PreparedUpload(
     val durationMs: Long,
     val clientCreatedAt: String,
     val expireAfterSeconds: Long,
+    val isFromPreparedCache: Boolean = false,
 )

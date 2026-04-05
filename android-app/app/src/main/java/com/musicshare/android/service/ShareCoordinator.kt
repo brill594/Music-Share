@@ -31,6 +31,7 @@ class ShareCoordinator(
 ) {
     private val shareMutex = Mutex()
     private val audioTranscoder = FfmpegAudioTranscoder(context)
+    private val preparedUploadCache = PreparedUploadCache(context)
 
     suspend fun shareLatestTrack(): ShareItemDto = shareMutex.withLock {
         updateRuntime(
@@ -40,18 +41,20 @@ class ShareCoordinator(
             lastError = "",
             lastShareUrl = "",
         )
-        var preparedFiles: List<File> = emptyList()
+        var preparedUpload: PreparedUpload? = null
+        var uploadSucceeded = false
         try {
             val state = stateStore.read()
             val track = resolveTrack(state.latestTrack, state.musicTreeUri)
                 ?: throw UserVisibleException("当前没有可分享的曲目。")
-            val prepared = prepareUpload(track)
-            preparedFiles = buildList {
-                add(prepared.audioFile)
-                prepared.coverFile?.let(::add)
-            }
-            updateRuntime(processing = true, stage = "上传到后端", progressPercent = -1)
-            val uploaded = backendRepository.upload(prepared)
+            preparedUpload = prepareUpload(track)
+            updateRuntime(
+                processing = true,
+                stage = if (preparedUpload.isFromPreparedCache) "复用缓存音频后上传" else "上传到后端",
+                progressPercent = if (preparedUpload.isFromPreparedCache) 100 else -1,
+            )
+            val uploaded = backendRepository.upload(preparedUpload)
+            uploadSucceeded = true
             copyToClipboard(uploaded.shareUrl)
             updateRuntime(
                 processing = false,
@@ -62,15 +65,20 @@ class ShareCoordinator(
             )
             uploaded
         } catch (error: Throwable) {
+            val finalMessage = buildFailureMessage(
+                originalMessage = error.message ?: "分享失败。",
+                hasReusablePreparedUpload = preparedUpload != null && !uploadSucceeded,
+            )
             updateRuntime(
                 processing = false,
                 stage = "",
                 progressPercent = -1,
-                lastError = error.message ?: "分享失败。",
+                lastError = finalMessage,
             )
+            if (finalMessage != error.message) {
+                throw UserVisibleException(finalMessage)
+            }
             throw error
-        } finally {
-            preparedFiles.forEach { it.delete() }
         }
     }
 
@@ -99,6 +107,18 @@ class ShareCoordinator(
 
     private suspend fun prepareUpload(track: CurrentTrackSnapshot): PreparedUpload = withContext(Dispatchers.IO) {
         val appState = stateStore.read()
+        preparedUploadCache.load(
+            track = track,
+            transcodeConfig = appState.transcode,
+            expireAfterSeconds = appState.shareDefaults.expireAfterSeconds,
+        )?.let { cached ->
+            updateRuntime(
+                processing = true,
+                stage = "复用上次准备好的音频",
+                progressPercent = 100,
+            )
+            return@withContext cached
+        }
         updateRuntime(processing = true, stage = "读取音频元数据")
         val sourceUri = Uri.parse(track.documentUri)
         val metadata = readMetadata(
@@ -141,7 +161,7 @@ class ShareCoordinator(
             coverFile to coverMime
         }
 
-        PreparedUpload(
+        val preparedUpload = PreparedUpload(
             audioFile = preparedAudio.file,
             audioMimeType = preparedAudio.audioMimeType,
             coverFile = coverResult?.first,
@@ -153,6 +173,15 @@ class ShareCoordinator(
             clientCreatedAt = track.updatedAt.ifBlank { nowIso() },
             expireAfterSeconds = appState.shareDefaults.expireAfterSeconds,
         )
+        runCatching {
+            preparedUploadCache.store(
+                track = track,
+                transcodeConfig = appState.transcode,
+                preparedUpload = preparedUpload,
+            )
+        }.getOrElse {
+            preparedUpload
+        }
     }
 
     private suspend fun transcodeAudio(
@@ -266,6 +295,19 @@ class ShareCoordinator(
                 progressPercent = progressPercent,
             )
         }
+    }
+
+    private fun buildFailureMessage(
+        originalMessage: String,
+        hasReusablePreparedUpload: Boolean,
+    ): String {
+        if (!hasReusablePreparedUpload) {
+            return originalMessage
+        }
+        if (originalMessage.contains("可直接重试")) {
+            return originalMessage
+        }
+        return "$originalMessage 已保留最近一次准备好的音频，可直接重试。"
     }
 
     private suspend fun copyToClipboard(url: String) = withContext(Dispatchers.Main) {

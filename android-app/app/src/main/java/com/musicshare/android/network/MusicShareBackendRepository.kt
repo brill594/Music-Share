@@ -1,7 +1,6 @@
 package com.musicshare.android.network
 
 import android.content.Context
-import android.util.Log
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.data.SessionSnapshot
@@ -11,7 +10,6 @@ import com.musicshare.android.util.nowIso
 import java.io.IOException
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -48,7 +46,7 @@ class MusicShareBackendRepository(
                 authLog = it.authLog.copy(lastAuthRequestedAt = nowIso()),
             )
         }
-        val response = executeLoginWithRetry(current, password)
+        val response = executeLogin(current, password)
         val session = SessionSnapshot(
             authType = response.authType,
             accessKey = response.sessionKey,
@@ -178,31 +176,6 @@ class MusicShareBackendRepository(
         )
     }
 
-    private suspend fun executeLoginWithRetry(state: PersistedAppState, password: String): LoginResponse {
-        var lastError: Throwable? = null
-        repeat(maxLoginAttempts) { attempt ->
-            runCatching {
-                executeLogin(state, password)
-            }.onSuccess { return it }
-                .onFailure { error ->
-                    lastError = error
-                    val shouldRetry = attempt < maxLoginAttempts - 1 && shouldRetryLogin(error)
-                    Log.w(
-                        authLogTag,
-                        "Login attempt ${attempt + 1}/$maxLoginAttempts failed retry=$shouldRetry message=${error.message}",
-                    )
-                    if (shouldRetry) {
-                        delay(loginRetryDelayMillis(attempt))
-                    }
-                }
-        }
-        val failure = lastError ?: UserVisibleException("认证失败。")
-        if (shouldRetryLogin(failure)) {
-            throw UserVisibleException("${failure.message ?: "认证失败。"}（已自动重试，最多尝试 ${maxLoginAttempts} 次）")
-        }
-        throw failure
-    }
-
     private suspend fun <T> withAuthorizedSession(
         preferAdmin: Boolean = false,
         block: suspend (PersistedAppState, SessionSnapshot) -> T,
@@ -317,26 +290,5 @@ class MusicShareBackendRepository(
         return "如果后端是直接运行在 ${requestUrl.port} 端口的 HTTP 服务，请把 base_url 显式写成 http://${requestUrl.host}；只有挂了 HTTPS 反向代理或证书时才用 https://。"
     }
 
-    private fun shouldRetryLogin(error: Throwable): Boolean {
-        return when (error) {
-            is UserVisibleException -> {
-                val message = error.message?.trim().orEmpty()
-                message.startsWith("网络请求失败") || message.startsWith("请求失败: HTTP 5")
-            }
-            is IOException -> true
-            else -> false
-        }
-    }
-
-    private fun loginRetryDelayMillis(attempt: Int): Long {
-        val delay = 600L + attempt * 400L
-        return delay.coerceAtMost(3_000L)
-    }
-
     private class SessionExpiredException : IOException()
-
-    private companion object {
-        const val maxLoginAttempts = 10
-        const val authLogTag = "MusicShareAuth"
-    }
 }
