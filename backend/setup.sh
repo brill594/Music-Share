@@ -32,6 +32,7 @@ NGINX_MAIN_CONF=""
 NGINX_SITE_CONF=""
 NGINX_SITE_LINK=""
 FRONTEND_DIST_DIR=""
+CERTBOT_VERSION=""
 
 log() {
     printf '[setup] %s\n' "$*"
@@ -90,18 +91,54 @@ load_env() {
 }
 
 install_dependencies() {
+    local -a packages=()
+    local has_certbot="false"
+
+    if command_exists nginx; then
+        log "nginx already installed; skipping package installation"
+    else
+        packages+=(nginx)
+    fi
+
+    if command_exists curl; then
+        log "curl already installed; skipping package installation"
+    else
+        packages+=(curl)
+    fi
+
+    if command_exists certbot; then
+        has_certbot="true"
+        log "certbot already installed; skipping certbot package installation"
+    else
+        packages+=(certbot)
+    fi
+
     if command_exists apt-get; then
-        log "installing nginx and certbot with apt-get"
-        run_root apt-get update
-        run_root apt-get install -y nginx certbot curl
-        if ! run_root apt-get install -y python3-certbot-dns-cloudflare; then
+        if (( ${#packages[@]} > 0 )); then
+            log "installing missing packages with apt-get: ${packages[*]}"
+            run_root apt-get update
+            run_root apt-get install -y "${packages[@]}"
+        else
+            log "apt-get packages already satisfied; nothing to install"
+        fi
+
+        if [[ "${has_certbot}" == "false" ]] && ! run_root apt-get install -y python3-certbot-dns-cloudflare; then
             log "optional package python3-certbot-dns-cloudflare not installed; dns-cloudflare mode will require manual plugin installation"
+        elif [[ "${has_certbot}" == "true" ]]; then
+            log "certbot already exists; skipping dns-cloudflare plugin package installation to avoid changing the current certbot setup"
         fi
     elif command_exists dnf; then
-        log "installing nginx and certbot with dnf"
-        run_root dnf install -y nginx certbot curl
-        if ! run_root dnf install -y python3-certbot-dns-cloudflare; then
+        if (( ${#packages[@]} > 0 )); then
+            log "installing missing packages with dnf: ${packages[*]}"
+            run_root dnf install -y "${packages[@]}"
+        else
+            log "dnf packages already satisfied; nothing to install"
+        fi
+
+        if [[ "${has_certbot}" == "false" ]] && ! run_root dnf install -y python3-certbot-dns-cloudflare; then
             log "optional package python3-certbot-dns-cloudflare not installed; dns-cloudflare mode will require manual plugin installation"
+        elif [[ "${has_certbot}" == "true" ]]; then
+            log "certbot already exists; skipping dns-cloudflare plugin package installation to avoid changing the current certbot setup"
         fi
     else
         fail "unsupported Linux package manager, expected apt-get or dnf"
@@ -115,6 +152,8 @@ resolve_paths() {
 
     [[ -x "${NGINX_BIN}" ]] || fail "nginx binary not found at ${NGINX_BIN}"
     [[ -x "${CERTBOT_BIN}" ]] || fail "certbot binary not found at ${CERTBOT_BIN}"
+    CERTBOT_VERSION="$("${CERTBOT_BIN}" --version 2>/dev/null | awk 'NR==1 {print $2}')"
+    [[ -n "${CERTBOT_VERSION}" ]] || fail "unable to detect certbot version from ${CERTBOT_BIN}"
     [[ -f "${NGINX_MAIN_CONF}" ]] || fail "nginx main config not found at ${NGINX_MAIN_CONF}"
 
     if grep -Eq 'include\s+/etc/nginx/sites-enabled/\*' "${NGINX_MAIN_CONF}"; then
@@ -207,9 +246,39 @@ normalize_domain_input() {
     printf '%s' "${value}"
 }
 
+is_ipv4_address() {
+    local value="$1"
+    local octet=""
+
+    [[ "${value}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+
+    IFS='.' read -r -a octets <<< "${value}"
+    for octet in "${octets[@]}"; do
+        (( 10#${octet} >= 0 && 10#${octet} <= 255 )) || return 1
+    done
+}
+
 validate_domain_format() {
     local domain="$1"
-    [[ "${domain}" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]
+    local tld=""
+
+    [[ "${domain}" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9-]{2,63}$ ]] || return 1
+    tld="${domain##*.}"
+    [[ ! "${tld}" =~ ^[0-9]+$ ]]
+}
+
+detect_target_kind() {
+    local target="$1"
+    if is_ipv4_address "${target}"; then
+        printf 'ip'
+    else
+        printf 'domain'
+    fi
+}
+
+validate_target_format() {
+    local target="$1"
+    is_ipv4_address "${target}" || validate_domain_format "${target}"
 }
 
 validate_public_https_port() {
@@ -235,6 +304,38 @@ build_public_base_url() {
     local domain="$1"
     local port="$2"
     printf 'https://%s%s' "${domain}" "$(https_port_suffix "${port}")"
+}
+
+version_gte() {
+    local current="$1"
+    local required="$2"
+    [[ "$(printf '%s\n%s\n' "${required}" "${current}" | sort -V | head -n 1)" == "${required}" ]]
+}
+
+certbot_supports_ip_standalone() {
+    version_gte "${CERTBOT_VERSION}" "5.3.0"
+}
+
+certbot_supports_ip_webroot() {
+    version_gte "${CERTBOT_VERSION}" "5.4.0"
+}
+
+require_certbot_ip_mode_support() {
+    local mode="$1"
+
+    case "${mode}" in
+        standalone)
+            certbot_supports_ip_standalone && return 0
+            fail "当前 certbot 版本 ${CERTBOT_VERSION:-unknown} 不支持 IP 地址证书；请升级到 Certbot 5.3 及以上，或改用域名"
+            ;;
+        webroot)
+            certbot_supports_ip_webroot && return 0
+            fail "当前 certbot 版本 ${CERTBOT_VERSION:-unknown} 不支持 IP 地址的 webroot 模式；请升级到 Certbot 5.4 及以上，或改用 standalone 模式"
+            ;;
+        dns-cloudflare)
+            fail "dns-cloudflare 模式不支持 IP 地址证书；IP 地址证书只能使用 webroot、standalone 或 manual"
+            ;;
+    esac
 }
 
 prepare_nginx_layout() {
@@ -576,20 +677,29 @@ stop_nginx_if_running() {
     return 1
 }
 
-verify_domain_reaches_nginx() {
-    local domain="$1"
+verify_target_reaches_nginx() {
+    local target="$1"
     local expected_token="$2"
-    local url="http://${domain}${DOMAIN_CHECK_PATH}"
+    local url="http://${target}${DOMAIN_CHECK_PATH}"
     local actual=""
 
     sleep 2
     actual="$(curl -fsS --max-time 15 "${url}")" || true
-    [[ -n "${actual}" ]] || fail "domain validation failed, cannot fetch ${url}"
-    [[ "${actual}" == "${expected_token}" ]] || fail "domain validation failed, fetched content did not match expected token"
-    log "domain validation passed: ${domain} is reaching this nginx instance"
+    [[ -n "${actual}" ]] || fail "address validation failed, cannot fetch ${url}"
+    [[ "${actual}" == "${expected_token}" ]] || fail "address validation failed, fetched content did not match expected token"
+    log "address validation passed: ${target} is reaching this nginx instance"
 }
 
 log_certbot_failure_guidance() {
+    local target_kind="$1"
+
+    if [[ "${target_kind}" == "ip" ]]; then
+        log "IP 地址证书申请失败"
+        log "请确认公网 IP 已直接指向当前服务器，且 80 端口可从外网访问"
+        log "IP 地址证书不支持 dns-cloudflare；如果 webroot 失败，可改用 standalone 并确认当前 certbot 至少为 5.3"
+        return
+    fi
+
     log "certificate request failed in webroot, standalone and dns-cloudflare modes"
     log "this usually means the domain or Cloudflare token configuration still has an issue"
     log "please check upstream WAF/CDN/reverse proxy/FRP/load balancer settings for the domain"
@@ -600,11 +710,11 @@ log_certbot_failure_guidance() {
 
 run_certbot_once() {
     local mode="$1"
-    local domain="$2"
+    local target="$2"
     local email="$3"
+    local target_kind="$4"
     local -a certbot_args=(
         certonly
-        -d "${domain}"
         --agree-tos
         --non-interactive
         --keep-until-expiring
@@ -617,6 +727,12 @@ run_certbot_once() {
 
     if [[ -n "${CERTBOT_DEPLOY_HOOK}" ]]; then
         certbot_args+=(--deploy-hook "${CERTBOT_DEPLOY_HOOK}")
+    fi
+
+    if [[ "${target_kind}" == "ip" ]]; then
+        certbot_args+=(--ip-address "${target}" --preferred-profile shortlived)
+    else
+        certbot_args+=(-d "${target}")
     fi
 
     case "${mode}" in
@@ -638,6 +754,10 @@ run_certbot_once() {
             fi
             ;;
         dns-cloudflare)
+            if [[ "${target_kind}" == "ip" ]]; then
+                log "dns-cloudflare mode is not available for IP address certificates"
+                return 1
+            fi
             ensure_certbot_dns_cloudflare_plugin
             ensure_cloudflare_credentials
             certbot_args+=(
@@ -655,7 +775,7 @@ run_certbot_once() {
         certbot_args+=(--register-unsafely-without-email)
     fi
 
-    log "requesting certificate for ${domain} with certbot mode=${mode}"
+    log "requesting certificate for ${target} with certbot mode=${mode}"
     if run_root "${CERTBOT_BIN}" "${certbot_args[@]}"; then
         certbot_rc=0
     else
@@ -672,27 +792,62 @@ run_certbot_once() {
 }
 
 run_certbot() {
-    local domain="$1"
+    local target="$1"
     local email="$2"
+    local target_kind="$3"
+
+    if [[ "${target_kind}" == "ip" ]]; then
+        case "${CERTBOT_MODE}" in
+            auto)
+                if certbot_supports_ip_webroot; then
+                    if run_certbot_once webroot "${target}" "${email}" "${target_kind}"; then
+                        return 0
+                    fi
+                    log "webroot certbot failed, retrying with standalone mode"
+                else
+                    log "certbot ${CERTBOT_VERSION} does not support IP address certificates in webroot mode; skipping webroot"
+                fi
+
+                if certbot_supports_ip_standalone; then
+                    if run_certbot_once standalone "${target}" "${email}" "${target_kind}"; then
+                        return 0
+                    fi
+                else
+                    log "certbot ${CERTBOT_VERSION} does not support IP address certificates; upgrade to 5.3+ and retry"
+                fi
+
+                log_certbot_failure_guidance "${target_kind}"
+                return 1
+                ;;
+            webroot|standalone)
+                require_certbot_ip_mode_support "${CERTBOT_MODE}"
+                run_certbot_once "${CERTBOT_MODE}" "${target}" "${email}" "${target_kind}"
+                ;;
+            dns-cloudflare)
+                require_certbot_ip_mode_support "${CERTBOT_MODE}"
+                ;;
+        esac
+        return
+    fi
 
     case "${CERTBOT_MODE}" in
         auto)
-            if run_certbot_once webroot "${domain}" "${email}"; then
+            if run_certbot_once webroot "${target}" "${email}" "${target_kind}"; then
                 return 0
             fi
             log "webroot certbot failed, retrying with standalone mode"
-            if run_certbot_once standalone "${domain}" "${email}"; then
+            if run_certbot_once standalone "${target}" "${email}" "${target_kind}"; then
                 return 0
             fi
             log "standalone certbot failed, retrying with dns-cloudflare mode"
-            if run_certbot_once dns-cloudflare "${domain}" "${email}"; then
+            if run_certbot_once dns-cloudflare "${target}" "${email}" "${target_kind}"; then
                 return 0
             fi
-            log_certbot_failure_guidance
+            log_certbot_failure_guidance "${target_kind}"
             return 1
             ;;
         webroot|standalone|dns-cloudflare)
-            run_certbot_once "${CERTBOT_MODE}" "${domain}" "${email}"
+            run_certbot_once "${CERTBOT_MODE}" "${target}" "${email}" "${target_kind}"
             ;;
     esac
 }
@@ -757,19 +912,27 @@ main() {
     fi
     log "backend runtime data root: ${APP_DATA_ROOT}"
     log "certbot mode: ${CERTBOT_MODE}"
+    log "certbot version: ${CERTBOT_VERSION}"
     log "公网 HTTPS 端口默认使用 443；如需改成其他端口，例如 8443，可在下一步输入"
-    log "请输入纯域名，例如 example.com；也可以直接粘贴 https://example.com/ ，脚本会自动提取域名"
+    log "请输入域名或 IPv4 地址，例如 example.com 或 203.0.113.10；也可以直接粘贴 https://example.com/ ，脚本会自动提取主机"
 
     local domain="${MUSIC_SHARE_DOMAIN:-}"
     local email="${MUSIC_SHARE_CERTBOT_EMAIL:-}"
     local public_https_port="${MUSIC_SHARE_PUBLIC_HTTPS_PORT:-${PUBLIC_HTTPS_PORT}}"
+    local target_kind=""
     domain="$(normalize_domain_input "${domain}")"
 
     while true; do
-        domain="$(normalize_domain_input "$(prompt_value "请输入要绑定的域名" "${domain}")")"
-        validate_domain_format "${domain}" && break
-        printf '域名格式不合法，请输入纯域名，例如：example.com\n'
+        domain="$(normalize_domain_input "$(prompt_value "请输入要绑定的域名或 IPv4 地址" "${domain}")")"
+        validate_target_format "${domain}" && break
+        printf '输入格式不合法，请输入域名或 IPv4 地址，例如：example.com 或 203.0.113.10\n'
     done
+    target_kind="$(detect_target_kind "${domain}")"
+
+    if [[ "${target_kind}" == "ip" ]]; then
+        log "detected IP address target: ${domain}"
+        log "IP 地址证书是短周期证书，脚本会自动使用 shortlived profile；dns-cloudflare 模式不可用"
+    fi
 
     while true; do
         public_https_port="$(prompt_value "请输入对外 HTTPS 端口" "${public_https_port}")"
@@ -798,9 +961,9 @@ PY
 
     test_nginx
     reload_or_start_nginx
-    verify_domain_reaches_nginx "${domain}" "${token}"
+    verify_target_reaches_nginx "${domain}" "${token}"
 
-    run_certbot "${domain}" "${email}"
+    run_certbot "${domain}" "${email}" "${target_kind}"
 
     local temp_https_conf
     temp_https_conf="$(mktemp)"
