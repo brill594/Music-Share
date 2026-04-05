@@ -135,9 +135,9 @@ prompt_value() {
     local current_value="$2"
     local answer=""
     if [[ -n "${current_value}" ]]; then
-        printf '%s [%s]: ' "${prompt_text}" "${current_value}"
+        printf '%s [%s]: ' "${prompt_text}" "${current_value}" >&2
     else
-        printf '%s: ' "${prompt_text}"
+        printf '%s: ' "${prompt_text}" >&2
     fi
     read -r answer
     if [[ -n "${answer}" ]]; then
@@ -511,7 +511,7 @@ main() {
         log "frontend dist not found, nginx will proxy backend only"
     fi
     log "backend runtime data root: ${APP_DATA_ROOT}"
-    log "请输入纯域名，例如 sharepoint.musicshare.top；也可以直接粘贴 https://sharepoint.musicshare.top/ ，脚本会自动提取域名"
+    log "请输入纯域名，例如 example.com；也可以直接粘贴 https://example.com/ ，脚本会自动提取域名"
 
     local domain="${MUSIC_SHARE_DOMAIN:-}"
     local email="${MUSIC_SHARE_CERTBOT_EMAIL:-}"
@@ -520,7 +520,7 @@ main() {
     while true; do
         domain="$(normalize_domain_input "$(prompt_value "请输入要绑定的域名" "${domain}")")"
         validate_domain_format "${domain}" && break
-        printf '域名格式不合法，请输入纯域名，例如：sharepoint.musicshare.top\n'
+        printf '域名格式不合法，请输入纯域名，例如：example.com\n'
     done
 
     email="$(prompt_value "请输入 Certbot 邮箱，可留空" "${email}")"
