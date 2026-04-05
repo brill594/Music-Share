@@ -1,0 +1,261 @@
+package com.musicshare.android.network
+
+import android.content.Context
+import com.musicshare.android.data.AppStateStore
+import com.musicshare.android.data.PersistedAppState
+import com.musicshare.android.data.SessionSnapshot
+import com.musicshare.android.util.UserVisibleException
+import com.musicshare.android.util.nowIso
+import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+
+class MusicShareBackendRepository(
+    private val context: Context,
+    private val stateStore: AppStateStore,
+) {
+    private val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }
+    private val httpClient = OkHttpClient.Builder().build()
+
+    suspend fun ensureSession(preferAdmin: Boolean = false): SessionSnapshot {
+        val current = stateStore.read()
+        if (current.server.authMode != "basic") {
+            return current.session
+        }
+        if (current.session.isValid() && (!preferAdmin || current.session.role == "admin")) {
+            return current.session
+        }
+        val password = resolvePassword(current, preferAdmin)
+        stateStore.update {
+            it.copy(
+                authLog = it.authLog.copy(lastAuthRequestedAt = nowIso()),
+            )
+        }
+        val response = executeLogin(current, password)
+        val session = SessionSnapshot(
+            authType = response.authType,
+            accessKey = response.sessionKey,
+            expiresAt = response.expiresAt,
+            role = response.role,
+        )
+        stateStore.update {
+            it.copy(
+                session = session,
+                authLog = it.authLog.copy(
+                    lastAuthRequestedAt = nowIso(),
+                    lastAuthSucceededAt = nowIso(),
+                    lastRole = response.role,
+                    lastAuthType = response.authType,
+                    lastExpiresAt = response.expiresAt,
+                ),
+            )
+        }
+        return session
+    }
+
+    suspend fun upload(preparedUpload: PreparedUpload): ShareItemDto =
+        withAuthorizedSession { state, session ->
+            val body = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    name = "file",
+                    filename = preparedUpload.audioFile.name,
+                    body = preparedUpload.audioFile.asRequestBody(preparedUpload.audioMimeType.toMediaType()),
+                )
+                .addFormDataPart("title", preparedUpload.title)
+                .addFormDataPart("artist", preparedUpload.artist)
+                .addFormDataPart("album", preparedUpload.album)
+                .addFormDataPart("duration_ms", preparedUpload.durationMs.toString())
+                .addFormDataPart("audio_mime", preparedUpload.audioMimeType)
+                .addFormDataPart("client_created_at", preparedUpload.clientCreatedAt)
+                .addFormDataPart("expire_after_seconds", preparedUpload.expireAfterSeconds.toString())
+            if (preparedUpload.coverFile != null && preparedUpload.coverMimeType != null) {
+                body.addFormDataPart(
+                    name = "cover",
+                    filename = preparedUpload.coverFile.name,
+                    body = preparedUpload.coverFile.asRequestBody(preparedUpload.coverMimeType.toMediaType()),
+                )
+            }
+            executeJson(
+                request = Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegment("upload").build())
+                    .header("X-Client-Install-Id", state.clientInstallId)
+                    .applySession(session)
+                    .post(body.build())
+                    .build(),
+            )
+        }
+
+    suspend fun listClientShares(): List<ShareItemDto> =
+        withAuthorizedSession { state, session ->
+            executeJson<ShareListResponse>(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("client/shares").build())
+                    .header("X-Client-Install-Id", state.clientInstallId)
+                    .applySession(session)
+                    .get()
+                    .build(),
+            ).items
+        }
+
+    suspend fun terminateClientShare(shareCode: String): ShareItemDto =
+        withAuthorizedSession { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(
+                        resolveBaseUrl(state).newBuilder()
+                            .addPathSegments("client/shares")
+                            .addPathSegment(shareCode)
+                            .addPathSegment("terminate")
+                            .build(),
+                    )
+                    .header("X-Client-Install-Id", state.clientInstallId)
+                    .applySession(session)
+                    .post("".toRequestBody())
+                    .build(),
+            )
+        }
+
+    suspend fun listAdminTracks(): List<ShareItemDto> =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson<ShareListResponse>(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("admin/tracks").build())
+                    .applySession(session)
+                    .get()
+                    .build(),
+            ).items
+        }
+
+    suspend fun terminateAdminShare(shareCode: String): ShareItemDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(
+                        resolveBaseUrl(state).newBuilder()
+                            .addPathSegments("admin/tracks")
+                            .addPathSegment(shareCode)
+                            .addPathSegment("terminate")
+                            .build(),
+                    )
+                    .applySession(session)
+                    .post("".toRequestBody())
+                    .build(),
+            )
+        }
+
+    suspend fun clearSession() {
+        stateStore.update {
+            it.copy(session = SessionSnapshot())
+        }
+    }
+
+    private suspend fun executeLogin(state: PersistedAppState, password: String): LoginResponse {
+        val requestBody = json.encodeToString(LoginRequest.serializer(), LoginRequest(password))
+            .toRequestBody("application/json".toMediaType())
+        return executeJson(
+            Request.Builder()
+                .url(resolveBaseUrl(state).newBuilder().addPathSegments("auth/login").build())
+                .post(requestBody)
+                .build(),
+        )
+    }
+
+    private suspend fun <T> withAuthorizedSession(
+        preferAdmin: Boolean = false,
+        block: suspend (PersistedAppState, SessionSnapshot) -> T,
+    ): T {
+        val initialState = stateStore.read()
+        val initialSession = if (initialState.server.authMode == "basic") {
+            ensureSession(preferAdmin)
+        } else {
+            initialState.session
+        }
+        return try {
+            block(stateStore.read(), initialSession)
+        } catch (error: SessionExpiredException) {
+            clearSession()
+            val refreshed = ensureSession(preferAdmin)
+            block(stateStore.read(), refreshed)
+        }
+    }
+
+    private suspend inline fun <reified T> executeJson(request: Request): T = withContext(Dispatchers.IO) {
+        val response = runCatching { httpClient.newCall(request).execute() }.getOrElse { error ->
+            throw mapCallError(error)
+        }
+        response.use { call ->
+            val bodyText = call.body?.string().orEmpty()
+            if (!call.isSuccessful) {
+                if (call.code == 401) {
+                    throw SessionExpiredException()
+                }
+                throw UserVisibleException(parseErrorMessage(bodyText) ?: "请求失败: HTTP ${call.code}")
+            }
+            runCatching { json.decodeFromString<T>(bodyText) }.getOrElse {
+                throw UserVisibleException("服务端返回了无法解析的数据。")
+            }
+        }
+    }
+
+    private fun Request.Builder.applySession(session: SessionSnapshot): Request.Builder {
+        if (session.accessKey.isNotBlank()) {
+            header("X-Session-Key", session.accessKey)
+        }
+        return this
+    }
+
+    private fun resolvePassword(state: PersistedAppState, preferAdmin: Boolean): String {
+        if (preferAdmin && state.admin.enabled && state.admin.password.isNotBlank()) {
+            return state.admin.password
+        }
+        if (state.server.basicAuthPassword.isNotBlank()) {
+            return state.server.basicAuthPassword
+        }
+        if (state.admin.enabled && state.admin.password.isNotBlank()) {
+            return state.admin.password
+        }
+        throw UserVisibleException("未配置可用的认证密码。")
+    }
+
+    private fun resolveBaseUrl(state: PersistedAppState): HttpUrl {
+        val raw = state.server.baseUrl.trim().removeSuffix("/")
+        if (raw.isBlank()) {
+            throw UserVisibleException("请先配置后端 base_url。")
+        }
+        val parsed = raw.toHttpUrlOrNull()
+            ?: throw UserVisibleException("base_url 格式无效。")
+        return parsed.newBuilder()
+            .port(state.server.port)
+            .build()
+    }
+
+    private fun parseErrorMessage(bodyText: String): String? {
+        return runCatching {
+            json.parseToJsonElement(bodyText).jsonObject["detail"]?.toString()?.trim('"')
+        }.getOrNull()
+    }
+
+    private fun mapCallError(error: Throwable): UserVisibleException {
+        return when (error) {
+            is IOException -> UserVisibleException("网络请求失败：${error.message ?: "无法连接后端"}")
+            is UserVisibleException -> error
+            else -> UserVisibleException(error.message ?: "请求失败。")
+        }
+    }
+
+    private class SessionExpiredException : IOException()
+}

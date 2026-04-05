@@ -1,0 +1,552 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETUP_DATA_DIR="${SCRIPT_DIR}/data"
+APP_DATA_ROOT=""
+STORAGE_DIR=""
+ACME_WEBROOT="${SETUP_DATA_DIR}/certbot-www"
+LE_BASE_DIR="${SETUP_DATA_DIR}/letsencrypt"
+LE_CONFIG_DIR="${LE_BASE_DIR}/config"
+LE_WORK_DIR="${LE_BASE_DIR}/work"
+LE_LOGS_DIR="${LE_BASE_DIR}/logs"
+ENV_FILE="${SCRIPT_DIR}/.env"
+BACKEND_UPSTREAM_HOST="${MUSIC_SHARE_BACKEND_HOST:-127.0.0.1}"
+BACKEND_UPSTREAM_PORT="${MUSIC_SHARE_BACKEND_PORT:-2087}"
+SITE_NAME="${MUSIC_SHARE_NGINX_SITE_NAME:-music-share.conf}"
+DOMAIN_CHECK_PATH="/.well-known/music-share-domain-check.txt"
+
+NGINX_BIN=""
+CERTBOT_BIN=""
+NGINX_MAIN_CONF=""
+NGINX_SITE_CONF=""
+NGINX_SITE_LINK=""
+FRONTEND_DIST_DIR=""
+
+log() {
+    printf '[setup] %s\n' "$*"
+}
+
+fail() {
+    printf '[setup] error: %s\n' "$*" >&2
+    exit 1
+}
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+run_root() {
+    if [[ "$(id -u)" -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+require_command() {
+    local cmd="$1"
+    command_exists "$cmd" || fail "missing required command: ${cmd}"
+}
+
+ensure_root() {
+    if [[ "$(id -u)" -ne 0 ]]; then
+        fail "setup.sh 需要 root 权限，请使用 root 用户或 sudo 执行，例如：sudo bash ./setup.sh"
+    fi
+}
+
+ensure_linux() {
+    [[ "$(uname -s)" == "Linux" ]] || fail "setup.sh 只支持 Linux 服务器"
+}
+
+load_env() {
+    if [[ -f "${ENV_FILE}" ]]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "${ENV_FILE}"
+        set +a
+        log "loaded ${ENV_FILE}"
+    fi
+}
+
+install_dependencies() {
+    if command_exists apt-get; then
+        log "installing nginx and certbot with apt-get"
+        run_root apt-get update
+        run_root apt-get install -y nginx certbot curl
+    elif command_exists dnf; then
+        log "installing nginx and certbot with dnf"
+        run_root dnf install -y nginx certbot curl
+    else
+        fail "unsupported Linux package manager, expected apt-get or dnf"
+    fi
+}
+
+resolve_paths() {
+    NGINX_BIN="$(command -v nginx)"
+    CERTBOT_BIN="$(command -v certbot)"
+    NGINX_MAIN_CONF="/etc/nginx/nginx.conf"
+
+    [[ -x "${NGINX_BIN}" ]] || fail "nginx binary not found at ${NGINX_BIN}"
+    [[ -x "${CERTBOT_BIN}" ]] || fail "certbot binary not found at ${CERTBOT_BIN}"
+    [[ -f "${NGINX_MAIN_CONF}" ]] || fail "nginx main config not found at ${NGINX_MAIN_CONF}"
+
+    if grep -Eq 'include\s+/etc/nginx/sites-enabled/\*' "${NGINX_MAIN_CONF}"; then
+        NGINX_SITE_CONF="/etc/nginx/sites-available/${SITE_NAME}"
+        NGINX_SITE_LINK="/etc/nginx/sites-enabled/${SITE_NAME}"
+        return
+    fi
+
+    if grep -Eq 'include\s+/etc/nginx/conf\.d/\*\.conf' "${NGINX_MAIN_CONF}"; then
+        NGINX_SITE_CONF="/etc/nginx/conf.d/${SITE_NAME}"
+        NGINX_SITE_LINK=""
+        return
+    fi
+
+    fail "unsupported nginx include layout in ${NGINX_MAIN_CONF}"
+}
+
+resolve_app_paths() {
+    local configured_data_root="${MUSIC_SHARE_DATA_ROOT:-${SCRIPT_DIR}/data}"
+    APP_DATA_ROOT="${configured_data_root%/}"
+    STORAGE_DIR="${APP_DATA_ROOT}/storage"
+}
+
+resolve_frontend_dist() {
+    local requested_dir="${MUSIC_SHARE_FRONTEND_DIST_DIR:-}"
+    local default_dir="${SCRIPT_DIR}/../web-player/dist"
+
+    if [[ -n "${requested_dir}" ]]; then
+        [[ -d "${requested_dir}" ]] || fail "frontend dist dir not found: ${requested_dir}"
+        FRONTEND_DIST_DIR="$(cd -- "${requested_dir}" && pwd)"
+        return
+    fi
+
+    if [[ -d "${default_dir}" ]]; then
+        FRONTEND_DIST_DIR="$(cd -- "${default_dir}" && pwd)"
+    else
+        FRONTEND_DIST_DIR=""
+    fi
+}
+
+prompt_value() {
+    local prompt_text="$1"
+    local current_value="$2"
+    local answer=""
+    if [[ -n "${current_value}" ]]; then
+        printf '%s [%s]: ' "${prompt_text}" "${current_value}"
+    else
+        printf '%s: ' "${prompt_text}"
+    fi
+    read -r answer
+    if [[ -n "${answer}" ]]; then
+        printf '%s' "${answer}"
+    else
+        printf '%s' "${current_value}"
+    fi
+}
+
+validate_domain_format() {
+    local domain="$1"
+    [[ "${domain}" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]
+}
+
+prepare_nginx_layout() {
+    run_root mkdir -p "$(dirname "${NGINX_SITE_CONF}")"
+    if [[ -n "${NGINX_SITE_LINK}" ]]; then
+        run_root mkdir -p "$(dirname "${NGINX_SITE_LINK}")"
+    fi
+}
+
+write_http_only_conf() {
+    local domain="$1"
+    local output_file="$2"
+
+    if [[ -n "${FRONTEND_DIST_DIR}" ]]; then
+        cat > "${output_file}" <<EOF
+server {
+    listen 80;
+    server_name ${domain};
+    client_max_body_size 64m;
+    root "${FRONTEND_DIST_DIR}";
+    index index.html;
+
+    location = ${DOMAIN_CHECK_PATH} {
+        default_type text/plain;
+        alias "${ACME_WEBROOT}${DOMAIN_CHECK_PATH}";
+    }
+
+    location ^~ /.well-known/acme-challenge/ {
+        root "${ACME_WEBROOT}";
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+
+    location ^~ /assets/ {
+        try_files \$uri =404;
+        access_log off;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+
+    location /internal-media/ {
+        internal;
+        alias "${STORAGE_DIR}/";
+    }
+
+    location = /openapi.json {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
+    }
+
+    location ~ ^/(auth|upload|client|admin|track|stream|cover|docs|redoc)(/|$) {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+        return
+    fi
+
+    cat > "${output_file}" <<EOF
+server {
+    listen 80;
+    server_name ${domain};
+    client_max_body_size 64m;
+
+    location = ${DOMAIN_CHECK_PATH} {
+        default_type text/plain;
+        alias "${ACME_WEBROOT}${DOMAIN_CHECK_PATH}";
+    }
+
+    location ^~ /.well-known/acme-challenge/ {
+        root "${ACME_WEBROOT}";
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+
+    location /internal-media/ {
+        internal;
+        alias "${STORAGE_DIR}/";
+    }
+
+    location / {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
+    }
+}
+EOF
+}
+
+write_https_conf() {
+    local domain="$1"
+    local output_file="$2"
+    local cert_dir="${LE_CONFIG_DIR}/live/${domain}"
+
+    if [[ -n "${FRONTEND_DIST_DIR}" ]]; then
+        cat > "${output_file}" <<EOF
+server {
+    listen 80;
+    server_name ${domain};
+    client_max_body_size 64m;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root "${ACME_WEBROOT}";
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${domain};
+    client_max_body_size 64m;
+    root "${FRONTEND_DIST_DIR}";
+    index index.html;
+
+    ssl_certificate "${cert_dir}/fullchain.pem";
+    ssl_certificate_key "${cert_dir}/privkey.pem";
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:MusicShareSSL:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    location ^~ /assets/ {
+        try_files \$uri =404;
+        access_log off;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+
+    location /internal-media/ {
+        internal;
+        alias "${STORAGE_DIR}/";
+    }
+
+    location = /openapi.json {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
+    }
+
+    location ~ ^/(auth|upload|client|admin|track|stream|cover|docs|redoc)(/|$) {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+        return
+    fi
+
+    cat > "${output_file}" <<EOF
+server {
+    listen 80;
+    server_name ${domain};
+    client_max_body_size 64m;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root "${ACME_WEBROOT}";
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${domain};
+    client_max_body_size 64m;
+
+    ssl_certificate "${cert_dir}/fullchain.pem";
+    ssl_certificate_key "${cert_dir}/privkey.pem";
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:MusicShareSSL:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    location /internal-media/ {
+        internal;
+        alias "${STORAGE_DIR}/";
+    }
+
+    location / {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
+    }
+}
+EOF
+}
+
+install_site_conf() {
+    local src_conf="$1"
+    run_root cp "${src_conf}" "${NGINX_SITE_CONF}"
+    if [[ -n "${NGINX_SITE_LINK}" ]]; then
+        run_root ln -sfn "${NGINX_SITE_CONF}" "${NGINX_SITE_LINK}"
+    fi
+}
+
+test_nginx() {
+    run_root "${NGINX_BIN}" -t -c "${NGINX_MAIN_CONF}"
+}
+
+reload_or_start_nginx() {
+    if command_exists systemctl && systemctl list-unit-files nginx.service >/dev/null 2>&1; then
+        if systemctl is-active --quiet nginx; then
+            if systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1; then
+                log "reloaded nginx with systemd"
+                return
+            fi
+        elif systemctl start nginx >/dev/null 2>&1; then
+            log "started nginx with systemd"
+            return
+        fi
+    fi
+
+    if run_root "${NGINX_BIN}" -s reload -c "${NGINX_MAIN_CONF}" >/dev/null 2>&1; then
+        log "reloaded nginx"
+    else
+        run_root "${NGINX_BIN}" -c "${NGINX_MAIN_CONF}"
+        log "started nginx"
+    fi
+}
+
+verify_domain_reaches_nginx() {
+    local domain="$1"
+    local expected_token="$2"
+    local url="http://${domain}${DOMAIN_CHECK_PATH}"
+    local actual=""
+
+    sleep 2
+    actual="$(curl -fsS --max-time 15 "${url}")" || true
+    [[ -n "${actual}" ]] || fail "domain validation failed, cannot fetch ${url}"
+    [[ "${actual}" == "${expected_token}" ]] || fail "domain validation failed, fetched content did not match expected token"
+    log "domain validation passed: ${domain} is reaching this nginx instance"
+}
+
+run_certbot() {
+    local domain="$1"
+    local email="$2"
+    local -a certbot_args=(
+        certonly
+        --webroot
+        -w "${ACME_WEBROOT}"
+        -d "${domain}"
+        --agree-tos
+        --non-interactive
+        --keep-until-expiring
+        --config-dir "${LE_CONFIG_DIR}"
+        --work-dir "${LE_WORK_DIR}"
+        --logs-dir "${LE_LOGS_DIR}"
+    )
+
+    if [[ -n "${email}" ]]; then
+        certbot_args+=(--email "${email}")
+    else
+        certbot_args+=(--register-unsafely-without-email)
+    fi
+
+    log "requesting certificate for ${domain}"
+    run_root "${CERTBOT_BIN}" "${certbot_args[@]}"
+}
+
+upsert_env_value() {
+    local key="$1"
+    local value="$2"
+    local temp_file
+
+    temp_file="$(mktemp)"
+    python3 - "${ENV_FILE}" "${temp_file}" "${key}" "${value}" <<'PY'
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1])
+tmp_path = Path(sys.argv[2])
+key = sys.argv[3]
+value = sys.argv[4]
+line = f"{key}={value}"
+
+if env_path.exists():
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+else:
+    lines = []
+
+updated = False
+result = []
+for current in lines:
+    if current.startswith(f"{key}="):
+        result.append(line)
+        updated = True
+    else:
+        result.append(current)
+
+if not updated:
+    result.append(line)
+
+tmp_path.write_text("\n".join(result).strip() + "\n", encoding="utf-8")
+PY
+    mv "${temp_file}" "${ENV_FILE}"
+}
+
+main() {
+    ensure_root
+    ensure_linux
+    load_env
+    resolve_app_paths
+    install_dependencies
+    resolve_paths
+    resolve_frontend_dist
+    prepare_nginx_layout
+
+    mkdir -p "${APP_DATA_ROOT}" "${STORAGE_DIR}" "${ACME_WEBROOT}" "${LE_CONFIG_DIR}" "${LE_WORK_DIR}" "${LE_LOGS_DIR}"
+
+    if [[ -n "${FRONTEND_DIST_DIR}" ]]; then
+        log "frontend dist detected: ${FRONTEND_DIST_DIR}"
+    else
+        log "frontend dist not found, nginx will proxy backend only"
+    fi
+    log "backend runtime data root: ${APP_DATA_ROOT}"
+
+    local domain="${MUSIC_SHARE_DOMAIN:-}"
+    local email="${MUSIC_SHARE_CERTBOT_EMAIL:-}"
+
+    while true; do
+        domain="$(prompt_value "请输入要绑定的域名" "${domain}")"
+        validate_domain_format "${domain}" && break
+        printf '域名格式不合法，请重新输入。\n'
+    done
+
+    email="$(prompt_value "请输入 Certbot 邮箱，可留空" "${email}")"
+
+    local token
+    token="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(24))
+PY
+)"
+    mkdir -p "$(dirname "${ACME_WEBROOT}${DOMAIN_CHECK_PATH}")"
+    printf '%s' "${token}" > "${ACME_WEBROOT}${DOMAIN_CHECK_PATH}"
+
+    local temp_http_conf
+    temp_http_conf="$(mktemp)"
+    write_http_only_conf "${domain}" "${temp_http_conf}"
+    install_site_conf "${temp_http_conf}"
+    rm -f "${temp_http_conf}"
+
+    test_nginx
+    reload_or_start_nginx
+    verify_domain_reaches_nginx "${domain}" "${token}"
+
+    run_certbot "${domain}" "${email}"
+
+    local temp_https_conf
+    temp_https_conf="$(mktemp)"
+    write_https_conf "${domain}" "${temp_https_conf}"
+    install_site_conf "${temp_https_conf}"
+    rm -f "${temp_https_conf}"
+
+    test_nginx
+    reload_or_start_nginx
+
+    upsert_env_value "MUSIC_SHARE_PUBLIC_API_BASE_URL" "https://${domain}"
+    upsert_env_value "MUSIC_SHARE_PUBLIC_SHARE_BASE_URL" "https://${domain}"
+    upsert_env_value "MUSIC_SHARE_USE_X_ACCEL_REDIRECT" "true"
+    upsert_env_value "MUSIC_SHARE_INTERNAL_MEDIA_PREFIX" "/internal-media"
+    upsert_env_value "MUSIC_SHARE_DATA_ROOT" "${APP_DATA_ROOT}"
+
+    log "setup complete"
+    log "nginx config: ${NGINX_SITE_CONF}"
+    log "certificate directory: ${LE_CONFIG_DIR}/live/${domain}"
+    log "backend env file updated: ${ENV_FILE}"
+    log "next step: run sudo bash ./start.sh from the project root"
+}
+
+main "$@"

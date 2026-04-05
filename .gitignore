@@ -1,0 +1,45 @@
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+.envrc
+*.keystore
+*.jks
+
+# Python
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/*.egg-info/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+backend/data/
+
+# Node / Vite
+**/node_modules/
+**/dist/
+**/.vite/
+**/coverage/
+
+# Android / Gradle
+**/.gradle/
+**/build/
+android-app/local.properties
+android-app/captures/
+android-app/.kotlin/
+
