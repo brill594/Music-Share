@@ -3,7 +3,6 @@ name: Deploy Web Player
 on:
   push:
     branches:
-      - main
       - cloud
     paths:
       - "web-player/**"
