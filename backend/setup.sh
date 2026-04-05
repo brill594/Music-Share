@@ -16,6 +16,7 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 BACKEND_UPSTREAM_HOST="${MUSIC_SHARE_BACKEND_HOST:-127.0.0.1}"
 BACKEND_UPSTREAM_PORT="${MUSIC_SHARE_BACKEND_PORT:-2087}"
 SITE_NAME="${MUSIC_SHARE_NGINX_SITE_NAME:-music-share.conf}"
+CERTBOT_MODE="${MUSIC_SHARE_CERTBOT_MODE:-auto}"
 DOMAIN_CHECK_PATH="/.well-known/music-share-domain-check.txt"
 
 NGINX_BIN=""
@@ -59,6 +60,16 @@ ensure_root() {
 
 ensure_linux() {
     [[ "$(uname -s)" == "Linux" ]] || fail "setup.sh 只支持 Linux 服务器"
+}
+
+validate_certbot_mode() {
+    case "${CERTBOT_MODE}" in
+        auto|webroot|standalone)
+            ;;
+        *)
+            fail "unsupported certbot mode: ${CERTBOT_MODE}, expected auto, webroot or standalone"
+            ;;
+    esac
 }
 
 load_env() {
@@ -422,6 +433,25 @@ reload_or_start_nginx() {
     fi
 }
 
+stop_nginx_if_running() {
+    if command_exists systemctl && systemctl list-unit-files nginx.service >/dev/null 2>&1; then
+        if systemctl is-active --quiet nginx; then
+            systemctl stop nginx
+            log "stopped nginx with systemd for standalone certbot"
+            return 0
+        fi
+        return 1
+    fi
+
+    if pgrep -x nginx >/dev/null 2>&1; then
+        run_root "${NGINX_BIN}" -s quit -c "${NGINX_MAIN_CONF}"
+        log "stopped nginx for standalone certbot"
+        return 0
+    fi
+
+    return 1
+}
+
 verify_domain_reaches_nginx() {
     local domain="$1"
     local expected_token="$2"
@@ -435,13 +465,12 @@ verify_domain_reaches_nginx() {
     log "domain validation passed: ${domain} is reaching this nginx instance"
 }
 
-run_certbot() {
-    local domain="$1"
-    local email="$2"
+run_certbot_once() {
+    local mode="$1"
+    local domain="$2"
+    local email="$3"
     local -a certbot_args=(
         certonly
-        --webroot
-        -w "${ACME_WEBROOT}"
         -d "${domain}"
         --agree-tos
         --non-interactive
@@ -450,6 +479,20 @@ run_certbot() {
         --work-dir "${LE_WORK_DIR}"
         --logs-dir "${LE_LOGS_DIR}"
     )
+    local nginx_was_running="false"
+    local certbot_rc=0
+
+    case "${mode}" in
+        webroot)
+            certbot_args+=(--webroot -w "${ACME_WEBROOT}")
+            ;;
+        standalone)
+            certbot_args+=(--standalone --preferred-challenges http)
+            if stop_nginx_if_running; then
+                nginx_was_running="true"
+            fi
+            ;;
+    esac
 
     if [[ -n "${email}" ]]; then
         certbot_args+=(--email "${email}")
@@ -457,8 +500,38 @@ run_certbot() {
         certbot_args+=(--register-unsafely-without-email)
     fi
 
-    log "requesting certificate for ${domain}"
-    run_root "${CERTBOT_BIN}" "${certbot_args[@]}"
+    log "requesting certificate for ${domain} with certbot mode=${mode}"
+    if run_root "${CERTBOT_BIN}" "${certbot_args[@]}"; then
+        certbot_rc=0
+    else
+        certbot_rc=$?
+    fi
+
+    if [[ "${nginx_was_running}" == "true" ]]; then
+        reload_or_start_nginx
+    fi
+
+    if [[ "${certbot_rc}" -ne 0 ]]; then
+        return "${certbot_rc}"
+    fi
+}
+
+run_certbot() {
+    local domain="$1"
+    local email="$2"
+
+    case "${CERTBOT_MODE}" in
+        auto)
+            if run_certbot_once webroot "${domain}" "${email}"; then
+                return 0
+            fi
+            log "webroot certbot failed, retrying with standalone mode"
+            run_certbot_once standalone "${domain}" "${email}"
+            ;;
+        webroot|standalone)
+            run_certbot_once "${CERTBOT_MODE}" "${domain}" "${email}"
+            ;;
+    esac
 }
 
 upsert_env_value() {
@@ -502,6 +575,7 @@ PY
 main() {
     ensure_root
     ensure_linux
+    validate_certbot_mode
     load_env
     resolve_app_paths
     install_dependencies
@@ -518,6 +592,7 @@ main() {
         log "frontend dist not found, nginx will proxy backend only"
     fi
     log "backend runtime data root: ${APP_DATA_ROOT}"
+    log "certbot mode: ${CERTBOT_MODE}"
     log "请输入纯域名，例如 example.com；也可以直接粘贴 https://example.com/ ，脚本会自动提取域名"
 
     local domain="${MUSIC_SHARE_DOMAIN:-}"
