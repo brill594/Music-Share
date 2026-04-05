@@ -147,6 +147,23 @@ prompt_value() {
     fi
 }
 
+normalize_domain_input() {
+    local value="$1"
+
+    value="${value//$'\r'/}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    value="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
+    value="${value#http://}"
+    value="${value#https://}"
+    value="${value%%/*}"
+    value="${value%%\?*}"
+    value="${value%%#*}"
+    value="${value%%:*}"
+    value="${value%.}"
+    printf '%s' "${value}"
+}
+
 validate_domain_format() {
     local domain="$1"
     [[ "${domain}" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]
@@ -494,14 +511,16 @@ main() {
         log "frontend dist not found, nginx will proxy backend only"
     fi
     log "backend runtime data root: ${APP_DATA_ROOT}"
+    log "请输入纯域名，例如 sharepoint.musicshare.top；也可以直接粘贴 https://sharepoint.musicshare.top/ ，脚本会自动提取域名"
 
     local domain="${MUSIC_SHARE_DOMAIN:-}"
     local email="${MUSIC_SHARE_CERTBOT_EMAIL:-}"
+    domain="$(normalize_domain_input "${domain}")"
 
     while true; do
-        domain="$(prompt_value "请输入要绑定的域名" "${domain}")"
+        domain="$(normalize_domain_input "$(prompt_value "请输入要绑定的域名" "${domain}")")"
         validate_domain_format "${domain}" && break
-        printf '域名格式不合法，请重新输入。\n'
+        printf '域名格式不合法，请输入纯域名，例如：sharepoint.musicshare.top\n'
     done
 
     email="$(prompt_value "请输入 Certbot 邮箱，可留空" "${email}")"
