@@ -149,9 +149,7 @@ function handleToggle(item: MetadataItem): void {
           />
           <span class="copy-panel__item-label">{{ item.label }}</span>
         </span>
-        <span class="copy-panel__item-value" :title="item.value">
-          <span class="copy-panel__item-value-marquee">{{ item.value }}</span>
-        </span>
+        <span class="copy-panel__item-value" :title="item.value">{{ item.value }}</span>
       </label>
     </div>
   </section>
@@ -200,13 +198,17 @@ function handleToggle(item: MetadataItem): void {
   display: grid;
   gap: 12px;
   align-content: start;
+  min-width: 0;
 }
 
 .copy-panel__item {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(132px, 148px) minmax(0, 1fr);
+  align-items: center;
   justify-content: flex-start;
   gap: 12px;
+  width: 100%;
+  min-width: 0;
   min-height: 64px;
   padding: 14px 16px;
   border-radius: 18px;
@@ -215,14 +217,16 @@ function handleToggle(item: MetadataItem): void {
     var(--track-page-panel-bg-strong, rgba(255, 255, 255, 0.05));
   box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
   color: var(--text);
+  overflow: hidden;
 }
 
 .copy-panel__item-main {
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 132px;
-  flex: 0 0 132px;
+  width: 100%;
   padding-top: 2px;
 }
 
@@ -237,25 +241,19 @@ function handleToggle(item: MetadataItem): void {
 
 .copy-panel__item-value {
   min-width: 0;
-  flex: 1 1 auto;
   display: block;
+  width: 100%;
   max-width: 100%;
   text-align: left;
   line-height: 1.45;
   user-select: text;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
-  align-self: flex-start;
+  align-self: center;
   padding-top: 2px;
   color: var(--text);
   text-shadow: var(--track-page-heading-shadow, none);
-}
-
-.copy-panel__item-value-marquee {
-  display: inline-block;
-  min-width: 100%;
-  white-space: nowrap;
   cursor: text;
 }
 
@@ -279,13 +277,13 @@ function handleToggle(item: MetadataItem): void {
 }
 
 .app-shell--mobile .copy-panel__item {
-  align-items: flex-start;
-  flex-direction: column;
+  grid-template-columns: minmax(102px, 118px) minmax(0, 1fr);
+  gap: 10px;
+  min-height: 58px;
 }
 
 .app-shell--mobile .copy-panel__item-main {
-  min-width: 0;
-  flex: 0 0 auto;
+  min-width: 102px;
 }
 
 .app-shell--mobile .copy-panel__item-value {
