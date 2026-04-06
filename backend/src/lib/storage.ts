@@ -192,7 +192,10 @@ export async function persistBackgroundUpload(options: {
   settings: AppSettings;
   share: ShareRecord;
   backgroundFile: File;
-}): Promise<Pick<ShareRecord, "background_mime" | "background_path">> {
+}): Promise<{
+  background_mime: string;
+  background_path: string;
+}> {
   const backgroundMime = normalizeMimeType(options.backgroundFile.type, {
     allowed: options.settings.allowedImageMimeTypes,
     fieldName: "background content_type",
