@@ -52,8 +52,10 @@ const progressWidth = computed(() => {
   gap: 14px;
   padding: 18px 20px;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--track-page-panel-border, rgba(255, 255, 255, 0.1));
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 56%),
+    var(--track-page-panel-bg-strong, rgba(255, 255, 255, 0.04));
 }
 
 .status-banner--info {
@@ -84,13 +86,14 @@ const progressWidth = computed(() => {
   font-size: 0.92rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--track-page-label, var(--muted));
 }
 
 .status-banner__detail {
   margin: 8px 0 0;
   line-height: 1.55;
   color: var(--text);
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .status-banner__action {
@@ -98,7 +101,7 @@ const progressWidth = computed(() => {
   white-space: nowrap;
   padding: 10px 16px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   color: var(--text);
   transition: transform 160ms ease, background 160ms ease;
 }
@@ -112,7 +115,7 @@ const progressWidth = computed(() => {
   overflow: hidden;
   height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .status-banner__progress-bar {

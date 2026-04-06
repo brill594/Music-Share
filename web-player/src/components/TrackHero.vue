@@ -116,12 +116,15 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   line-height: 0.95;
   letter-spacing: -0.04em;
   text-wrap: balance;
+  color: var(--text);
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .track-hero__artist {
   margin: 0;
   font-size: clamp(1.15rem, 2vw, 1.45rem);
   color: var(--text);
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .track-hero__album {
@@ -139,12 +142,15 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 .track-hero__meta-grid > div {
   padding: 16px 18px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 58%),
+    var(--track-page-panel-bg-strong, rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
 }
 
 .track-hero__label {
   margin: 0;
-  color: var(--muted);
+  color: var(--track-page-label, var(--muted));
   font-size: 0.84rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -154,6 +160,7 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   margin: 8px 0 0;
   color: var(--text);
   font-size: 1rem;
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .app-shell--desktop .track-hero {

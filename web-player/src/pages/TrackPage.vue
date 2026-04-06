@@ -43,6 +43,8 @@ const trackPageSurfaceStyle = computed(() => {
   };
 });
 
+const hasImageBackdrop = computed(() => Boolean(track.value?.background_url ?? track.value?.cover_url));
+
 const audioDownloadLabel = computed(() => {
   const { loaded, total } = downloadProgress.value;
   if (total) {
@@ -146,7 +148,10 @@ onBeforeUnmount(() => {
     <div class="page-shell__grain"></div>
 
     <main class="page-shell__content">
-      <div class="track-page-surface" :style="trackPageSurfaceStyle">
+      <div
+        :class="['track-page-surface', { 'track-page-surface--with-image': hasImageBackdrop }]"
+        :style="trackPageSurfaceStyle"
+      >
         <section class="page-card page-card--wide track-page">
           <StatusBanner
             :tone="bannerTone"
@@ -214,6 +219,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .track-page-surface {
+  --text: #fff9f0;
+  --muted: #d6dde5;
+  --track-page-label: #c8d1da;
+  --track-page-heading-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
+  --track-page-panel-bg: rgba(44, 52, 63, 0.72);
+  --track-page-panel-bg-strong: rgba(34, 41, 52, 0.82);
+  --track-page-panel-border: rgba(255, 255, 255, 0.12);
+  --track-page-action-bg: rgba(121, 255, 203, 0.22);
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -230,14 +243,14 @@ onBeforeUnmount(() => {
   border-radius: inherit;
   background-image:
     var(--track-page-custom-bg, none),
-    radial-gradient(circle at top left, rgba(235, 248, 245, 0.18), transparent 34%),
-    linear-gradient(140deg, rgba(244, 248, 246, 0.16), rgba(216, 228, 231, 0.08));
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.18), transparent 34%),
+    linear-gradient(140deg, rgba(242, 246, 245, 0.22), rgba(223, 230, 233, 0.14));
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
   opacity: 0.96;
-  backdrop-filter: blur(34px) saturate(1.15);
-  -webkit-backdrop-filter: blur(34px) saturate(1.15);
+  backdrop-filter: blur(24px) saturate(1.08);
+  -webkit-backdrop-filter: blur(24px) saturate(1.08);
   box-shadow:
     0 32px 90px rgba(0, 0, 0, 0.28),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -250,9 +263,27 @@ onBeforeUnmount(() => {
   z-index: 0;
   border-radius: inherit;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04) 28%, rgba(9, 15, 22, 0.10) 100%),
-    rgba(18, 28, 38, 0.34);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08) 18%, rgba(21, 27, 36, 0.14) 48%, rgba(21, 27, 36, 0.3) 100%),
+    rgba(35, 43, 54, 0.42);
   pointer-events: none;
+}
+
+.track-page-surface--with-image {
+  --text: #fffdf9;
+  --muted: #e0e7ee;
+  --track-page-label: #d0d9e2;
+  --track-page-heading-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+  --track-page-panel-bg: rgba(20, 27, 37, 0.78);
+  --track-page-panel-bg-strong: rgba(12, 18, 27, 0.86);
+  --track-page-panel-border: rgba(255, 255, 255, 0.14);
+  --track-page-action-bg: rgba(121, 255, 203, 0.28);
+}
+
+.track-page-surface--with-image::after {
+  background:
+    linear-gradient(180deg, rgba(7, 12, 18, 0.24), rgba(7, 12, 18, 0.42) 24%, rgba(7, 12, 18, 0.62) 62%, rgba(7, 12, 18, 0.74) 100%),
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.11), transparent 28%),
+    rgba(10, 17, 25, 0.48);
 }
 
 .track-page {
@@ -291,9 +322,9 @@ onBeforeUnmount(() => {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.06), transparent 55%),
-    rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 55%),
+    var(--track-page-panel-bg-strong);
+  box-shadow: inset 0 0 0 1px var(--track-page-panel-border);
 }
 
 .track-page__pending-title {

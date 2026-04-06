@@ -164,9 +164,9 @@ function handleToggle(item: MetadataItem): void {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(145deg, rgba(121, 255, 203, 0.10), transparent 38%),
-    rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    linear-gradient(145deg, rgba(121, 255, 203, 0.12), transparent 38%),
+    var(--track-page-panel-bg, rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
   min-height: 348px;
 }
 
@@ -180,12 +180,14 @@ function handleToggle(item: MetadataItem): void {
 .copy-panel__title {
   margin: 0;
   font-size: clamp(1.35rem, 2vw, 1.8rem);
+  color: var(--text);
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .copy-panel__button {
   padding: 12px 18px;
   border-radius: 999px;
-  background: rgba(121, 255, 203, 0.16);
+  background: var(--track-page-action-bg, rgba(121, 255, 203, 0.16));
   color: var(--text);
 }
 
@@ -208,7 +210,10 @@ function handleToggle(item: MetadataItem): void {
   min-height: 64px;
   padding: 14px 16px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.05);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 56%),
+    var(--track-page-panel-bg-strong, rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
   color: var(--text);
 }
 
@@ -226,7 +231,7 @@ function handleToggle(item: MetadataItem): void {
 }
 
 .copy-panel__item-label {
-  color: var(--muted);
+  color: var(--track-page-label, var(--muted));
   white-space: nowrap;
 }
 
@@ -244,6 +249,8 @@ function handleToggle(item: MetadataItem): void {
   scrollbar-width: none;
   align-self: flex-start;
   padding-top: 2px;
+  color: var(--text);
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .copy-panel__item-value-marquee {

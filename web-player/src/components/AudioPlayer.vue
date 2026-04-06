@@ -205,9 +205,9 @@ onBeforeUnmount(() => {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(135deg, rgba(121, 255, 203, 0.10), transparent 40%),
-    rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    linear-gradient(135deg, rgba(121, 255, 203, 0.12), transparent 42%),
+    var(--track-page-panel-bg, rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
   min-height: 348px;
 }
 
@@ -225,6 +225,8 @@ onBeforeUnmount(() => {
 .audio-player__title {
   margin: 0;
   font-size: clamp(1.4rem, 2vw, 1.9rem);
+  color: var(--text);
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .audio-player__modes {
@@ -236,8 +238,8 @@ onBeforeUnmount(() => {
 .audio-player__mode-button {
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--muted);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--track-page-label, var(--muted));
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
@@ -286,8 +288,9 @@ onBeforeUnmount(() => {
 .audio-player__times {
   display: flex;
   justify-content: space-between;
-  color: var(--muted);
+  color: var(--text);
   font-size: 0.92rem;
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .audio-player__footer {
