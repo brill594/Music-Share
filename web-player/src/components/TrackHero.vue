@@ -168,10 +168,15 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 
 .app-shell--desktop .track-hero__body {
   gap: 22px;
+  min-height: 100%;
 }
 
 .app-shell--desktop .track-hero__summary {
   gap: 14px;
+}
+
+.app-shell--desktop .track-hero__meta-grid {
+  margin-top: auto;
 }
 
 .app-shell--mobile .track-hero {
