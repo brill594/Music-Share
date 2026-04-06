@@ -1,54 +1,44 @@
 # Music Share
 
-Music Share 是一套临时音频分享工具，包含：
+Music Share 是一套面向临时分享场景的音频分享系统，包含 Android 上传端、Cloudflare Worker 后端和公开试听页面。
 
-- `android-app/` Android 客户端
-- `backend/` Cloudflare Worker 后端
-- `web-player/` 公开试听前端
+## 项目组成
 
-当前后端架构已收敛为：
+- `android-app/` Android 客户端，负责登录、发起分享和管理分享状态
+- `backend/` Cloudflare Workers API，负责鉴权、上传、分享访问控制和定时清理
+- `web-player/` Web Player，负责公开展示歌曲信息并提供试听体验
+
+## 核心能力
+
+- 统一密码登录，区分普通用户与管理员
+- 上传音频、封面和基础元数据
+- 生成公开分享链接
+- 支持分享过期和提前终止
+- 提供公开试听页和客户端管理接口
+
+## 运行架构
 
 - `Cloudflare Workers`
 - `D1`
 - `R2`
-- `Cron Triggers`
+- `Cloudflare Pages`
 
-不再保留旧的单机 `FastAPI + SQLite + 本地文件系统 + Nginx` 部署链路。
-
-## 功能概览
-
-- 统一密码登录，区分普通用户与管理员
-- 上传音频、封面和歌曲元数据
-- 生成公开分享码
-- 对外提供：
-  - `GET /track/{share_code}`
-  - `GET /stream/{share_code}`
-  - `GET /cover/{share_code}`
-- 对客户端提供：
-  - `GET /client/shares`
-  - `GET /client/shares/{share_code}`
-  - `POST /client/shares/{share_code}/terminate`
-- 对管理员提供：
-  - `GET /admin/tracks`
-  - `POST /admin/tracks/{share_code}/terminate`
-
-## 开发
+## 本地启动
 
 后端：
 
 ```bash
 cd backend
 npm install
-npm run typecheck
-npm test
 npm run dev
 ```
 
-前端：
+Web Player：
 
 ```bash
 cd web-player
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -59,24 +49,10 @@ cd android-app
 ./gradlew :app:assembleDebug
 ```
 
-## 部署概览
+## 部署
 
-后端通过 Wrangler 部署到 Cloudflare：
+后端使用 Wrangler 部署到 Cloudflare Workers，Web Player 部署到 Cloudflare Pages。部署前需要准备 D1、R2、Pages 项目以及对应的环境变量和密钥配置。
 
-```bash
-cd backend
-npm run deploy
-```
+完整部署说明见 [DEPLOYMENT.md](/Users/brilliant/repo/Music%20Share_Worker/DEPLOYMENT.md)。
 
-部署前需要完成：
-
-- D1 数据库创建与迁移
-- R2 bucket 创建与绑定
-- Worker 环境变量配置
-
-项目级使用与部署总览见 [DEPLOYMENT.md](/Users/brilliant/repo/Music%20Share_Worker/DEPLOYMENT.md)。
-
-更具体的模块说明见：
-
-- [backend/README.md](/Users/brilliant/repo/Music%20Share_Worker/backend/README.md)
-- [web-player/README.md](/Users/brilliant/repo/Music%20Share_Worker/web-player/README.md)
+模块说明见 [backend/README.md](/Users/brilliant/repo/Music%20Share_Worker/backend/README.md) 和 [web-player/README.md](/Users/brilliant/repo/Music%20Share_Worker/web-player/README.md)。

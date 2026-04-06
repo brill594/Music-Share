@@ -150,16 +150,10 @@ class ShareCoordinator(
         }
 
         updateRuntime(processing = true, stage = "提取封面", progressPercent = -1)
-        val coverResult = metadata.coverBytes?.let { bytes ->
-            val coverMime = detectImageMime(bytes) ?: return@let null
-            val coverFile = File.createTempFile(
-                "music-share-cover-${UUID.randomUUID()}",
-                extensionForMime(coverMime),
-                context.cacheDir,
-            )
-            FileOutputStream(coverFile).use { output -> output.write(bytes) }
-            coverFile to coverMime
-        }
+        val coverResult = extractCover(
+            sourceUri = sourceUri,
+            metadata = metadata,
+        )
 
         val preparedUpload = PreparedUpload(
             audioFile = preparedAudio.file,
@@ -219,6 +213,30 @@ class ShareCoordinator(
             file = audioFile,
             audioMimeType = targetMimeType,
         )
+    }
+
+    private suspend fun extractCover(
+        sourceUri: Uri,
+        metadata: ExtractedMetadata,
+    ): Pair<File, String>? {
+        metadata.coverBytes?.let { bytes ->
+            val coverMime = detectImageMime(bytes)
+            if (coverMime != null) {
+                return writeCoverBytesToFile(bytes, coverMime)
+            }
+        }
+        val extractedArtwork = audioTranscoder.extractEmbeddedArtwork(sourceUri) ?: return null
+        return extractedArtwork.file to extractedArtwork.mimeType
+    }
+
+    private fun writeCoverBytesToFile(bytes: ByteArray, coverMime: String): Pair<File, String> {
+        val coverFile = File.createTempFile(
+            "music-share-cover-${UUID.randomUUID()}",
+            extensionForMime(coverMime),
+            context.cacheDir,
+        )
+        FileOutputStream(coverFile).use { output -> output.write(bytes) }
+        return coverFile to coverMime
     }
 
     private fun readMetadata(
