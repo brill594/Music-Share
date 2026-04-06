@@ -47,23 +47,27 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
     </div>
 
     <div class="track-hero__body">
-      <h1 class="track-hero__title">{{ title }}</h1>
-      <p class="track-hero__artist">{{ artistLabel }}</p>
-      <p class="track-hero__album">{{ albumLabel }}</p>
-
-      <div class="track-hero__chips">
-        <span>{{ formatDurationMs(durationMs) }}</span>
-        <span>{{ formatMimeLabel(audioMime) }}</span>
+      <div class="track-hero__summary">
+        <h1 class="track-hero__title">{{ title }}</h1>
+        <p class="track-hero__artist">{{ artistLabel }}</p>
+        <p class="track-hero__album">{{ albumLabel }}</p>
       </div>
 
-      <div class="track-hero__meta-grid">
-        <div>
-          <p class="track-hero__label">过期提醒</p>
-          <p class="track-hero__value">{{ expiryHint }}</p>
+      <div class="track-hero__details">
+        <div class="track-hero__chips">
+          <span>{{ formatDurationMs(durationMs) }}</span>
+          <span>{{ formatMimeLabel(audioMime) }}</span>
         </div>
-        <div>
-          <p class="track-hero__label">失效时间</p>
-          <p class="track-hero__value">{{ formatDateTime(expiresAt) }}</p>
+
+        <div class="track-hero__meta-grid">
+          <div>
+            <p class="track-hero__label">过期提醒</p>
+            <p class="track-hero__value">{{ expiryHint }}</p>
+          </div>
+          <div>
+            <p class="track-hero__label">失效时间</p>
+            <p class="track-hero__value">{{ formatDateTime(expiresAt) }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -102,7 +106,14 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 
 .track-hero__body {
   display: grid;
-  gap: 14px;
+  gap: 18px;
+  min-width: 0;
+}
+
+.track-hero__summary {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .track-hero__title {
@@ -111,6 +122,7 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   font-size: clamp(2.2rem, 5vw, 4.6rem);
   line-height: 0.95;
   letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 
 .track-hero__artist {
@@ -123,6 +135,11 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   margin: 0;
   color: var(--muted);
   font-size: 1rem;
+}
+
+.track-hero__details {
+  display: grid;
+  gap: 16px;
 }
 
 .track-hero__chips {
@@ -143,7 +160,6 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 6px;
 }
 
 .track-hero__meta-grid > div {
@@ -167,15 +183,31 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 }
 
 .app-shell--desktop .track-hero {
-  grid-template-columns: minmax(200px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
   align-items: start;
   gap: clamp(24px, 3vw, 40px);
 }
 
 .app-shell--desktop .track-hero__cover-panel {
   max-width: 100%;
-  position: sticky;
-  top: 24px;
+}
+
+.app-shell--desktop .track-hero__body {
+  gap: 22px;
+}
+
+.app-shell--desktop .track-hero__summary {
+  gap: 14px;
+}
+
+.app-shell--desktop .track-hero__details {
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.app-shell--desktop .track-hero__chips {
+  align-self: start;
 }
 
 .app-shell--mobile .track-hero {
@@ -191,6 +223,10 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 
 .app-shell--mobile .track-hero__body {
   gap: 12px;
+}
+
+.app-shell--mobile .track-hero__summary {
+  gap: 10px;
 }
 
 .app-shell--mobile .track-hero__title {
@@ -209,6 +245,12 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 .app-shell--mobile .track-hero__meta-grid {
   grid-template-columns: 1fr;
   gap: 12px;
+}
+
+@media (max-width: 1040px) {
+  .app-shell--desktop .track-hero__details {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 840px) {

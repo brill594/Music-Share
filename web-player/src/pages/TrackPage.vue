@@ -246,26 +246,40 @@ onBeforeUnmount(() => {
 }
 
 .app-shell--desktop .track-page__content-grid {
-  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: clamp(24px, 3vw, 40px);
 }
 
 .app-shell--desktop .track-page__hero-slot {
-  grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-column: 1 / -1;
+  grid-row: 1;
 }
 
 .app-shell--desktop .track-page__player-slot {
-  grid-column: 2;
-  grid-row: 1;
-  position: sticky;
-  top: 24px;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .app-shell--desktop .track-page__copy-slot {
   grid-column: 2;
   grid-row: 2;
+}
+
+@media (max-width: 1120px) {
+  .app-shell--desktop .track-page__content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell--desktop .track-page__hero-slot,
+  .app-shell--desktop .track-page__player-slot,
+  .app-shell--desktop .track-page__copy-slot {
+    grid-column: 1;
+  }
+
+  .app-shell--desktop .track-page__copy-slot {
+    grid-row: 3;
+  }
 }
 
 .app-shell--mobile .track-page__content-grid {
