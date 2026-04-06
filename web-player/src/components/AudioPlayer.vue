@@ -337,7 +337,7 @@ onBeforeUnmount(() => {
   margin-left: 6px;
   border-top: 15px solid transparent;
   border-bottom: 15px solid transparent;
-  border-left: 24px solid #0a1f18;
+  border-left: 24px solid #ffffff;
 }
 
 .audio-player__icon--pause {
@@ -349,7 +349,7 @@ onBeforeUnmount(() => {
   width: 9px;
   height: 30px;
   border-radius: 999px;
-  background: #0a1f18;
+  background: #ffffff;
 }
 
 .app-shell--mobile .audio-player {
@@ -389,7 +389,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   width: 84px;
   height: 84px;
-  color: #0a1f18;
+  color: #ffffff;
   margin-inline: auto;
 }
 
