@@ -202,7 +202,7 @@ function handleToggle(item: MetadataItem): void {
 
 .copy-panel__item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-start;
   gap: 12px;
   min-height: 64px;
@@ -216,8 +216,9 @@ function handleToggle(item: MetadataItem): void {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
-  flex: 0 0 auto;
+  min-width: 132px;
+  flex: 0 0 132px;
+  padding-top: 2px;
 }
 
 .copy-panel__item-checkbox {
@@ -235,12 +236,14 @@ function handleToggle(item: MetadataItem): void {
   display: block;
   max-width: min(100%, 280px);
   text-align: left;
+  line-height: 1.45;
   user-select: text;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
   scrollbar-width: none;
-  mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+  align-self: flex-start;
+  padding-top: 2px;
 }
 
 .copy-panel__item-value-marquee {
@@ -278,11 +281,15 @@ function handleToggle(item: MetadataItem): void {
   flex-direction: column;
 }
 
+.app-shell--mobile .copy-panel__item-main {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
 .app-shell--mobile .copy-panel__item-value {
   width: 100%;
   max-width: 100%;
   text-align: left;
-  mask-image: none;
 }
 
 @media (max-width: 640px) {

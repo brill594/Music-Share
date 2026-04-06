@@ -176,8 +176,21 @@ onBeforeUnmount(() => {
 
     <div class="audio-player__footer">
       <div class="audio-player__controls">
-        <button class="audio-player__primary" type="button" @click="void togglePlayback()">
-          {{ isPlaying ? "暂停" : "播放" }}
+        <button
+          class="audio-player__primary audio-player__primary--icon"
+          type="button"
+          :aria-label="isPlaying ? '暂停' : '播放'"
+          @click="void togglePlayback()"
+        >
+          <span
+            v-if="!isPlaying"
+            class="audio-player__icon audio-player__icon--play"
+            aria-hidden="true"
+          ></span>
+          <span v-else class="audio-player__icon audio-player__icon--pause" aria-hidden="true">
+            <span></span>
+            <span></span>
+          </span>
         </button>
       </div>
     </div>
@@ -300,6 +313,42 @@ onBeforeUnmount(() => {
   color: #0a1f18;
 }
 
+.audio-player__primary--icon {
+  width: 92px;
+  min-width: 92px;
+  height: 92px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: 0 16px 32px rgba(77, 217, 191, 0.16);
+}
+
+.audio-player__icon {
+  display: inline-block;
+}
+
+.audio-player__icon--play {
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  border-top: 15px solid transparent;
+  border-bottom: 15px solid transparent;
+  border-left: 24px solid #0a1f18;
+}
+
+.audio-player__icon--pause {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.audio-player__icon--pause span {
+  width: 9px;
+  height: 30px;
+  border-radius: 999px;
+  background: #0a1f18;
+}
+
 .app-shell--mobile .audio-player {
   gap: 18px;
   min-height: auto;
@@ -334,7 +383,8 @@ onBeforeUnmount(() => {
 
 .app-shell--mobile .audio-player__primary {
   min-width: 0;
-  width: 100%;
+  width: 84px;
+  height: 84px;
   color: #0a1f18;
 }
 
