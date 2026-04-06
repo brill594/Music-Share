@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
 }
 
 .audio-player__primary {
-  background: linear-gradient(120deg, rgba(255, 143, 183, 0.92), rgba(255, 95, 149, 0.9));
+  background: linear-gradient(120deg, rgba(255, 194, 217, 0.94), rgba(255, 164, 201, 0.92));
   color: #2d0f1d;
 }
 
@@ -324,7 +324,7 @@ onBeforeUnmount(() => {
   display: inline-grid;
   place-items: center;
   border-radius: 50%;
-  box-shadow: 0 16px 32px rgba(255, 95, 149, 0.18);
+  box-shadow: 0 16px 32px rgba(255, 164, 201, 0.16);
 }
 
 .audio-player__icon {
