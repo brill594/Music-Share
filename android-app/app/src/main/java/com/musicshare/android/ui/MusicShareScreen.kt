@@ -3,11 +3,11 @@ package com.musicshare.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -20,6 +20,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -273,14 +274,6 @@ private fun ShareManagementTab(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = onUploadAdminBackground) {
                         Text("设置背景图")
-                    }
-                    if (!adminBackground?.backgroundUrl.isNullOrBlank()) {
-                        SelectionContainer {
-                            Text(
-                                text = adminBackground?.backgroundUrl.orEmpty(),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
                     }
                 }
             }
@@ -555,18 +548,31 @@ private fun ShareSection(
                         )
                         Text("过期：${formatDisplayTime(item.expiresAt)}")
                         HorizontalDivider()
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            SelectionContainer(modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            OutlinedButton(
+                                modifier = Modifier.weight(1.2f),
+                                onClick = { clipboardManager.setText(AnnotatedString(item.shareUrl)) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                            ) {
                                 Text(
-                                    text = item.shareUrl,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    text = "复制共享链接",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
                                 )
                             }
-                            TextButton(onClick = { clipboardManager.setText(AnnotatedString(item.shareUrl)) }) {
-                                Text("复制")
-                            }
-                            TextButton(onClick = { onTerminate(item.shareCode) }) {
-                                Text("结束")
+                            Button(
+                                modifier = Modifier.weight(0.8f),
+                                onClick = { onTerminate(item.shareCode) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                            ) {
+                                Text(
+                                    text = "结束共享",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                )
                             }
                         }
                     }
