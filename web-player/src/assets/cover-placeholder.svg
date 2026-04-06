@@ -1,14 +1,19 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="48" fill="#101A22"/>
-  <rect x="36" y="36" width="440" height="440" rx="36" fill="url(#paint0_linear)"/>
-  <circle cx="256" cy="256" r="126" fill="#F4E3C7" fill-opacity="0.16"/>
-  <circle cx="256" cy="256" r="78" fill="#F4E3C7" fill-opacity="0.92"/>
-  <circle cx="256" cy="256" r="22" fill="#101A22"/>
-  <path d="M336 154.8V281.6C323.8 268.8 306 261.2 284.6 261.2C243.8 261.2 210.8 290.4 210.8 326.6C210.8 362.8 243.8 392 284.6 392C325.4 392 358.4 362.8 358.4 326.6V196H396V154.8H336Z" fill="#FF9A3C"/>
+  <rect width="512" height="512" rx="48" fill="url(#paint0_linear)"/>
+  <rect x="36" y="36" width="440" height="440" rx="36" fill="url(#paint1_linear)" fill-opacity="0.6"/>
+  <circle cx="256" cy="256" r="126" fill="#C89AB2" fill-opacity="0.22"/>
+  <circle cx="256" cy="256" r="78" fill="#FFF5EF" fill-opacity="0.96"/>
+  <circle cx="256" cy="256" r="22" fill="#7A5666"/>
+  <path d="M336 154.8V281.6C323.8 268.8 306 261.2 284.6 261.2C243.8 261.2 210.8 290.4 210.8 326.6C210.8 362.8 243.8 392 284.6 392C325.4 392 358.4 362.8 358.4 326.6V196H396V154.8H336Z" fill="#FFB16B"/>
   <defs>
-    <linearGradient id="paint0_linear" x1="84" y1="72" x2="452" y2="452" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#173343"/>
-      <stop offset="1" stop-color="#331C17"/>
+    <linearGradient id="paint0_linear" x1="46" y1="40" x2="466" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F9E4EE"/>
+      <stop offset="0.52" stop-color="#F5D7E5"/>
+      <stop offset="1" stop-color="#EAC7D8"/>
+    </linearGradient>
+    <linearGradient id="paint1_linear" x1="84" y1="72" x2="452" y2="452" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF7FB"/>
+      <stop offset="1" stop-color="#F2CCD6"/>
     </linearGradient>
   </defs>
 </svg>
