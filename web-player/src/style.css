@@ -73,7 +73,7 @@ button {
 }
 
 .app-shell--desktop {
-  --page-max-width: 1120px;
+  --page-max-width: min(92vw, 1440px);
 }
 
 .app-shell--mobile {
@@ -85,7 +85,9 @@ button {
   min-height: 100vh;
   padding: clamp(18px, 4vw, 36px);
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
+  padding-top: clamp(28px, 5vh, 72px);
 }
 
 .page-shell__cover,
@@ -127,7 +129,7 @@ button {
 }
 
 .page-card {
-  padding: clamp(20px, 3vw, 30px);
+  padding: clamp(20px, 3vw, 40px);
   border-radius: 30px;
   border: 1px solid var(--stroke);
   background:
@@ -141,13 +143,13 @@ button {
 }
 
 .page-card--wide {
-  width: min(100%, 1040px);
+  width: 100%;
 }
 
 .state-page {
   display: grid;
   gap: 18px;
-  width: min(100%, 680px);
+  width: min(100%, 720px);
   text-align: left;
 }
 
@@ -197,12 +199,14 @@ button {
 }
 
 .app-shell--desktop .page-card--wide {
-  width: min(100%, 1080px);
+  width: 100%;
 }
 
 .app-shell--mobile .page-shell {
-  place-items: stretch;
+  justify-items: stretch;
+  align-items: start;
   padding: 14px;
+  padding-top: 14px;
 }
 
 .app-shell--mobile .page-shell__cover {

@@ -77,7 +77,7 @@ onBeforeUnmount(() => {
   <section class="copy-panel">
     <div class="copy-panel__header">
       <div>
-        <h2 class="copy-panel__title">复制分享文案</h2>
+        <h2 class="copy-panel__title">歌曲信息</h2>
       </div>
       <button class="copy-panel__button" type="button" :disabled="!previewText" @click="void handleCopy()">
         {{

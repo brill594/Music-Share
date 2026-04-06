@@ -167,13 +167,15 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
 }
 
 .app-shell--desktop .track-hero {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(200px, 320px) minmax(0, 1fr);
   align-items: start;
-  gap: 22px;
+  gap: clamp(24px, 3vw, 40px);
 }
 
 .app-shell--desktop .track-hero__cover-panel {
   max-width: 100%;
+  position: sticky;
+  top: 24px;
 }
 
 .app-shell--mobile .track-hero {

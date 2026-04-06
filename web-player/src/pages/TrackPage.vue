@@ -246,9 +246,9 @@ onBeforeUnmount(() => {
 }
 
 .app-shell--desktop .track-page__content-grid {
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
   align-items: start;
-  gap: 28px;
+  gap: clamp(24px, 3vw, 40px);
 }
 
 .app-shell--desktop .track-page__hero-slot {
