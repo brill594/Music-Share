@@ -81,7 +81,7 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   padding: 14px;
   border-radius: 28px;
   background:
-    linear-gradient(145deg, rgba(121, 255, 203, 0.22), rgba(77, 217, 191, 0.14)),
+    linear-gradient(145deg, rgba(255, 143, 183, 0.26), rgba(255, 95, 149, 0.16)),
     rgba(255, 255, 255, 0.04);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.08),

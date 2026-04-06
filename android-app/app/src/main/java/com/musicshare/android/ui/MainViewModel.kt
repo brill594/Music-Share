@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.musicshare.android.MusicShareApplication
+import com.musicshare.android.network.AdminBackgroundDto
 import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.network.ShareItemDto
 import com.musicshare.android.util.normalizeBaseUrl
@@ -21,6 +22,7 @@ data class DashboardUiState(
     val appState: PersistedAppState = PersistedAppState(),
     val clientShares: List<ShareItemDto> = emptyList(),
     val adminShares: List<ShareItemDto> = emptyList(),
+    val adminBackground: AdminBackgroundDto? = null,
     val isRefreshing: Boolean = false,
 )
 
@@ -28,6 +30,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as MusicShareApplication).container
     private val clientShares = MutableStateFlow<List<ShareItemDto>>(emptyList())
     private val adminShares = MutableStateFlow<List<ShareItemDto>>(emptyList())
+    private val adminBackground = MutableStateFlow<AdminBackgroundDto?>(null)
     private val isRefreshing = MutableStateFlow(false)
 
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -36,12 +39,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             container.stateStore.state,
             clientShares,
             adminShares,
+            adminBackground,
             isRefreshing,
-        ) { appState, clientList, adminList, refreshing ->
+        ) { appState, clientList, adminList, background, refreshing ->
             DashboardUiState(
                 appState = appState,
                 clientShares = clientList,
                 adminShares = adminList,
+                adminBackground = background,
                 isRefreshing = refreshing,
             )
         }.stateIn(
@@ -85,10 +90,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 val client = container.backendRepository.listClientShares()
                 val admin = runCatching { container.backendRepository.listAdminTracks() }.getOrDefault(emptyList())
-                client to admin
-            }.onSuccess { (client, admin) ->
+                val background = runCatching { container.backendRepository.getAdminBackground() }.getOrNull()
+                Triple(client, admin, background)
+            }.onSuccess { (client, admin, background) ->
                 clientShares.value = client
                 adminShares.value = admin
+                adminBackground.value = background
             }.onFailure { error ->
                 messages.tryEmit(error.message ?: "刷新分享失败。")
             }
@@ -122,11 +129,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun uploadAdminShareBackground(shareCode: String, uri: Uri?) {
+    fun uploadAdminBackground(uri: Uri?) {
         if (uri == null) return
         viewModelScope.launch {
             runCatching {
-                container.backendRepository.uploadAdminTrackBackground(shareCode, uri)
+                container.backendRepository.uploadAdminBackground(uri)
             }.onSuccess {
                 refreshShares()
                 messages.tryEmit("背景图已上传。")

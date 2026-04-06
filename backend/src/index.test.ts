@@ -406,12 +406,11 @@ describe("Cloudflare Worker backend compatibility", () => {
     expect(listAfterPayload.count).toBe(0);
   });
 
-  it("allows admin background upload and public background fetch", async () => {
+  it("allows admin global background upload and public background fetch", async () => {
     const harness = createHarness();
     const { sessionKey: userSession } = await login(harness, "user-password");
     const uploaded = await uploadSample(harness, userSession);
     const shareCode = String(uploaded.share_code);
-    const shareUuid = String(uploaded.uuid);
     const { sessionKey: adminSession } = await login(harness, "admin-password");
 
     const form = new FormData();
@@ -421,7 +420,7 @@ describe("Cloudflare Worker backend compatibility", () => {
     );
 
     const updateResponse = await harness.request({
-      path: `/admin/tracks/${shareCode}/background`,
+      path: "/admin/background",
       method: "POST",
       headers: {
         "X-Session-Key": adminSession,
@@ -429,16 +428,33 @@ describe("Cloudflare Worker backend compatibility", () => {
       body: form,
     });
     expect(updateResponse.status).toBe(200);
-    const updatePayload = (await updateResponse.json()) as { background_url?: string };
-    expect(updatePayload.background_url).toBe(`https://api.example.test/background/${shareCode}`);
-    expect(harness.storage.has(`shares/${shareUuid}/background.webp`)).toBe(true);
+    const updatePayload = (await updateResponse.json()) as { background_url?: string; configured?: boolean };
+    expect(updatePayload.background_url).toBe("https://api.example.test/background");
+    expect(updatePayload.configured).toBe(true);
+    expect(harness.storage.has("settings/background.webp")).toBe(true);
+
+    const trackResponse = await harness.request({
+      path: `/track/${shareCode}`,
+    });
+    const trackPayload = (await trackResponse.json()) as { background_url?: string };
+    expect(trackPayload.background_url).toBe("https://api.example.test/background");
 
     const backgroundResponse = await harness.request({
-      path: `/background/${shareCode}`,
+      path: "/background",
     });
     expect(backgroundResponse.status).toBe(200);
     expect(backgroundResponse.headers.get("content-type")).toBe("image/webp");
     expect(new Uint8Array(await backgroundResponse.arrayBuffer())).toEqual(new Uint8Array([8, 7, 6, 5]));
+
+    const adminStatusResponse = await harness.request({
+      path: "/admin/background",
+      headers: {
+        "X-Session-Key": adminSession,
+      },
+    });
+    expect(adminStatusResponse.status).toBe(200);
+    const adminStatusPayload = (await adminStatusResponse.json()) as { configured?: boolean };
+    expect(adminStatusPayload.configured).toBe(true);
   });
 
   it("cleans up expired shares and expired sessions", async () => {

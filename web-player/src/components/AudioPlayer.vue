@@ -51,7 +51,7 @@ const progressPercent = computed(() => {
 });
 
 const sliderStyle = computed(() => ({
-  background: `linear-gradient(90deg, rgba(77, 217, 191, 0.96) 0%, rgba(121, 255, 203, 0.96) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) 100%)`,
+  background: `linear-gradient(90deg, rgba(255, 95, 149, 0.96) 0%, rgba(255, 143, 183, 0.96) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) 100%)`,
 }));
 
 async function togglePlayback(): Promise<void> {
@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(135deg, rgba(121, 255, 203, 0.12), transparent 42%),
+    linear-gradient(135deg, rgba(255, 143, 183, 0.12), transparent 42%),
     var(--track-page-panel-bg, rgba(255, 255, 255, 0.04));
   box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
   min-height: 348px;
@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
 }
 
 .audio-player__mode-button--active {
-  background: rgba(121, 255, 203, 0.18);
+  background: rgba(255, 143, 183, 0.2);
   color: var(--text);
 }
 
@@ -273,7 +273,7 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 50%;
   background: #e8fff8;
-  box-shadow: 0 0 0 5px rgba(121, 255, 203, 0.22);
+  box-shadow: 0 0 0 5px rgba(255, 143, 183, 0.22);
 }
 
 .audio-player__range::-moz-range-thumb {
@@ -282,7 +282,7 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 50%;
   background: #e8fff8;
-  box-shadow: 0 0 0 5px rgba(121, 255, 203, 0.22);
+  box-shadow: 0 0 0 5px rgba(255, 143, 183, 0.22);
 }
 
 .audio-player__times {
@@ -312,8 +312,8 @@ onBeforeUnmount(() => {
 }
 
 .audio-player__primary {
-  background: linear-gradient(120deg, rgba(121, 255, 203, 0.90), rgba(77, 217, 191, 0.90));
-  color: #0a1f18;
+  background: linear-gradient(120deg, rgba(255, 143, 183, 0.92), rgba(255, 95, 149, 0.9));
+  color: #2d0f1d;
 }
 
 .audio-player__primary--icon {
@@ -324,7 +324,7 @@ onBeforeUnmount(() => {
   display: inline-grid;
   place-items: center;
   border-radius: 50%;
-  box-shadow: 0 16px 32px rgba(77, 217, 191, 0.16);
+  box-shadow: 0 16px 32px rgba(255, 95, 149, 0.18);
 }
 
 .audio-player__icon {

@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.collect
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel> { MainViewModel.factory(application) }
     private var preserveInstallIdOnImport: Boolean = true
-    private var pendingBackgroundShareCode: String? = null
 
     private val openTreeLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -39,11 +38,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val backgroundImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        val shareCode = pendingBackgroundShareCode
-        pendingBackgroundShareCode = null
-        if (shareCode != null) {
-            viewModel.uploadAdminShareBackground(shareCode, uri)
-        }
+        viewModel.uploadAdminBackground(uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,8 +65,7 @@ class MainActivity : ComponentActivity() {
                     onRefreshShares = { vm.refreshShares() },
                     onTerminateClientShare = vm::terminateClientShare,
                     onTerminateAdminShare = vm::terminateAdminShare,
-                    onUploadAdminBackground = { shareCode ->
-                        pendingBackgroundShareCode = shareCode
+                    onUploadAdminBackground = {
                         backgroundImageLauncher.launch(arrayOf("image/jpeg", "image/png", "image/webp"))
                     },
                     onExportConfig = { exportLauncher.launch("music-share-config.json") },

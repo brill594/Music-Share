@@ -1,12 +1,20 @@
 import type { AppSettings } from "./config";
 import { ApiError } from "./errors";
 import { effectiveStatus, nowIso, remainingSeconds, type ShareRecord } from "./models";
+import type { GlobalBackgroundConfig } from "./storage";
 
 function resolvePublicBaseUrl(configured: string | null, request: Request): string {
   return (configured ?? new URL(request.url).origin).replace(/\/+$/, "");
 }
 
-function buildShareUrls(settings: AppSettings, request: Request, share: ShareRecord) {
+function buildShareUrls(
+  settings: AppSettings,
+  request: Request,
+  share: ShareRecord,
+  options: {
+    includeGlobalBackground?: boolean;
+  } = {},
+) {
   const apiBase = resolvePublicBaseUrl(settings.publicApiBaseUrl, request);
   const shareBase = resolvePublicBaseUrl(settings.publicShareBaseUrl, request);
   return {
@@ -14,12 +22,19 @@ function buildShareUrls(settings: AppSettings, request: Request, share: ShareRec
     track_url: `${apiBase}/track/${share.share_code}`,
     stream_url: `${apiBase}/stream/${share.share_code}`,
     cover_url: share.cover_path ? `${apiBase}/cover/${share.share_code}` : null,
-    background_url: share.background_path ? `${apiBase}/background/${share.share_code}` : null,
+    background_url: options.includeGlobalBackground ? `${apiBase}/background` : null,
   };
 }
 
-export function serializeSharePublic(settings: AppSettings, request: Request, share: ShareRecord) {
-  const urls = buildShareUrls(settings, request, share);
+export function serializeSharePublic(
+  settings: AppSettings,
+  request: Request,
+  share: ShareRecord,
+  options: {
+    includeGlobalBackground?: boolean;
+  } = {},
+) {
+  const urls = buildShareUrls(settings, request, share, options);
   return {
     share_code: share.share_code,
     title: share.title,
@@ -38,9 +53,16 @@ export function serializeSharePublic(settings: AppSettings, request: Request, sh
   };
 }
 
-export function serializeShareUpload(settings: AppSettings, request: Request, share: ShareRecord) {
+export function serializeShareUpload(
+  settings: AppSettings,
+  request: Request,
+  share: ShareRecord,
+  options: {
+    includeGlobalBackground?: boolean;
+  } = {},
+) {
   return {
-    ...serializeSharePublic(settings, request, share),
+    ...serializeSharePublic(settings, request, share, options),
     uuid: share.uuid,
   };
 }
@@ -51,10 +73,13 @@ export function serializeShareManagement(
   share: ShareRecord,
   options: {
     includeClientInstallId?: boolean;
+    includeGlobalBackground?: boolean;
   } = {},
 ) {
   const payload = {
-    ...serializeSharePublic(settings, request, share),
+    ...serializeSharePublic(settings, request, share, {
+      includeGlobalBackground: options.includeGlobalBackground,
+    }),
     client_created_at: share.client_created_at,
     terminated_at: share.terminated_at,
     remaining_seconds: remainingSeconds(share, nowIso()),
@@ -63,6 +88,19 @@ export function serializeShareManagement(
     payload.client_install_id = share.client_install_id;
   }
   return payload;
+}
+
+export function serializeGlobalBackground(
+  settings: AppSettings,
+  request: Request,
+  config: GlobalBackgroundConfig | null,
+) {
+  const apiBase = resolvePublicBaseUrl(settings.publicApiBaseUrl, request);
+  return {
+    configured: config !== null,
+    background_url: config ? `${apiBase}/background` : null,
+    updated_at: config?.updated_at ?? null,
+  };
 }
 
 export function requireShareAvailable(share: ShareRecord | null): ShareRecord {

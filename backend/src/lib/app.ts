@@ -20,12 +20,16 @@ import {
   coverResponse,
   createShareRecord,
   deleteShareAssets,
+  globalBackgroundResponse,
   persistUploads,
   persistBackgroundUpload,
+  persistGlobalBackgroundUpload,
+  readGlobalBackgroundConfig,
   R2ObjectStorage,
 } from "./storage";
 import {
   requireShareAvailable,
+  serializeGlobalBackground,
   serializeShareManagement,
   serializeSharePublic,
   serializeShareUpload,
@@ -217,7 +221,12 @@ async function handleUpload(request: Request, context: AppContext): Promise<Resp
 
 async function handleTrack(request: Request, context: AppContext, shareCode: string): Promise<Response> {
   const share = requireShareAvailable(await context.repository.getShareByCode(shareCode));
-  return jsonResponse(serializeSharePublic(context.settings, request, share));
+  const globalBackground = await readGlobalBackgroundConfig(context.storage);
+  return jsonResponse(
+    serializeSharePublic(context.settings, request, share, {
+      includeGlobalBackground: globalBackground !== null,
+    }),
+  );
 }
 
 async function handleStream(context: AppContext, shareCode: string): Promise<Response> {
@@ -241,6 +250,10 @@ async function handleBackground(context: AppContext, shareCode: string): Promise
     throw new ApiError(410, `Share is ${status}.`);
   }
   return backgroundResponse(context.storage, share);
+}
+
+async function handleGlobalBackground(context: AppContext): Promise<Response> {
+  return globalBackgroundResponse(context.storage);
 }
 
 async function handleListClientShares(request: Request, context: AppContext): Promise<Response> {
@@ -382,6 +395,46 @@ async function handleUploadAdminTrackBackground(
   );
 }
 
+async function handleGetAdminBackground(request: Request, context: AppContext): Promise<Response> {
+  await getAuthenticatedSession(request, context, true);
+  return jsonResponse(
+    serializeGlobalBackground(context.settings, request, await readGlobalBackgroundConfig(context.storage)),
+  );
+}
+
+async function handleUploadAdminBackground(request: Request, context: AppContext): Promise<Response> {
+  await getAuthenticatedSession(request, context, true);
+
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    throw new ApiError(422, "Request body must be multipart form data.");
+  }
+
+  const backgroundFile = readFormFile(form, "background", true);
+  if (backgroundFile === null) {
+    throw new ApiError(422, "background is required.");
+  }
+
+  const previous = await readGlobalBackgroundConfig(context.storage);
+  const persisted = await persistGlobalBackgroundUpload({
+    storage: context.storage,
+    settings: context.settings,
+    backgroundFile,
+  });
+
+  if (previous?.path && previous.path !== persisted.path) {
+    try {
+      await context.storage.deleteObject(previous.path);
+    } catch {
+      // Best effort cleanup for replaced global background.
+    }
+  }
+
+  return jsonResponse(serializeGlobalBackground(context.settings, request, persisted));
+}
+
 async function routeRequest(request: Request, context: AppContext): Promise<Response> {
   const url = new URL(request.url);
   const segments = url.pathname.split("/").filter(Boolean).map(decodePathSegment);
@@ -394,6 +447,9 @@ async function routeRequest(request: Request, context: AppContext): Promise<Resp
   }
   if (request.method === "POST" && url.pathname === "/upload") {
     return handleUpload(request, context);
+  }
+  if (request.method === "GET" && url.pathname === "/background") {
+    return handleGlobalBackground(context);
   }
   if (request.method === "GET" && segments.length === 2 && segments[0] === "track") {
     return handleTrack(request, context, segments[1]);
@@ -424,6 +480,12 @@ async function routeRequest(request: Request, context: AppContext): Promise<Resp
   }
   if (request.method === "GET" && url.pathname === "/admin/tracks") {
     return handleListAdminTracks(request, context);
+  }
+  if (request.method === "GET" && url.pathname === "/admin/background") {
+    return handleGetAdminBackground(request, context);
+  }
+  if (request.method === "POST" && url.pathname === "/admin/background") {
+    return handleUploadAdminBackground(request, context);
   }
   if (
     request.method === "POST" &&

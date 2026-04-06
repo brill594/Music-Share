@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,12 +39,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.musicshare.android.data.PersistedAppState
+import com.musicshare.android.network.AdminBackgroundDto
 import com.musicshare.android.network.ShareItemDto
 import com.musicshare.android.util.formatDisplayTime
 import com.musicshare.android.util.formatDurationLabel
@@ -61,7 +65,7 @@ fun MusicShareScreen(
     onRefreshShares: () -> Unit,
     onTerminateClientShare: (String) -> Unit,
     onTerminateAdminShare: (String) -> Unit,
-    onUploadAdminBackground: (String) -> Unit,
+    onUploadAdminBackground: () -> Unit,
     onExportConfig: () -> Unit,
     onImportConfigPreserveId: () -> Unit,
     onImportConfigReplaceId: () -> Unit,
@@ -102,6 +106,7 @@ fun MusicShareScreen(
                     appState = uiState.appState,
                     clientShares = uiState.clientShares,
                     adminShares = uiState.adminShares,
+                    adminBackground = uiState.adminBackground,
                     isRefreshing = uiState.isRefreshing,
                     onAuthenticateUser = onAuthenticateUser,
                     onAuthenticateAdmin = onAuthenticateAdmin,
@@ -205,13 +210,14 @@ private fun ShareManagementTab(
     appState: PersistedAppState,
     clientShares: List<ShareItemDto>,
     adminShares: List<ShareItemDto>,
+    adminBackground: AdminBackgroundDto?,
     isRefreshing: Boolean,
     onAuthenticateUser: () -> Unit,
     onAuthenticateAdmin: () -> Unit,
     onRefreshShares: () -> Unit,
     onTerminateClientShare: (String) -> Unit,
     onTerminateAdminShare: (String) -> Unit,
-    onUploadAdminBackground: (String) -> Unit,
+    onUploadAdminBackground: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
     Column(
@@ -255,11 +261,34 @@ private fun ShareManagementTab(
         )
 
         if (appState.session.role == "admin") {
+            HighlightCard(
+                title = "背景图管理",
+                body = buildString {
+                    append(if (adminBackground?.configured == true) "当前已配置全局背景图。" else "当前未配置全局背景图。")
+                    if (!adminBackground?.updatedAt.isNullOrBlank()) {
+                        append("\n最近更新：${formatDisplayTime(adminBackground?.updatedAt.orEmpty())}")
+                    }
+                },
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = onUploadAdminBackground) {
+                        Text("设置背景图")
+                    }
+                    if (!adminBackground?.backgroundUrl.isNullOrBlank()) {
+                        SelectionContainer {
+                            Text(
+                                text = adminBackground?.backgroundUrl.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+
             ShareSection(
                 title = "后端管理",
                 items = adminShares,
                 onTerminate = onTerminateAdminShare,
-                onUploadBackground = onUploadAdminBackground,
             )
         } else {
             HighlightCard(
@@ -494,8 +523,8 @@ private fun ShareSection(
     title: String,
     items: List<ShareItemDto>,
     onTerminate: (String) -> Unit,
-    onUploadBackground: ((String) -> Unit)? = null,
 ) {
+    val clipboardManager = LocalClipboardManager.current
     HighlightCard(
         title = title,
         body = if (items.isEmpty()) "暂无记录。" else "共 ${items.size} 条。",
@@ -525,20 +554,16 @@ private fun ShareSection(
                             }",
                         )
                         Text("过期：${formatDisplayTime(item.expiresAt)}")
-                        if (item.backgroundUrl != null) {
-                            Text("背景图：已配置", style = MaterialTheme.typography.bodySmall)
-                        }
                         HorizontalDivider()
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                text = item.shareUrl,
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (onUploadBackground != null) {
-                                TextButton(onClick = { onUploadBackground(item.shareCode) }) {
-                                    Text("背景图")
-                                }
+                            SelectionContainer(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.shareUrl,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            TextButton(onClick = { clipboardManager.setText(AnnotatedString(item.shareUrl)) }) {
+                                Text("复制")
                             }
                             TextButton(onClick = { onTerminate(item.shareCode) }) {
                                 Text("结束")

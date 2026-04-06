@@ -11,6 +11,14 @@ import {
   randomShareCode,
 } from "./validation";
 
+const GLOBAL_BACKGROUND_MANIFEST_KEY = "settings/global-background.json";
+
+export interface GlobalBackgroundConfig {
+  path: string;
+  mime: string;
+  updated_at: string;
+}
+
 export class R2ObjectStorage implements ObjectStorage {
   constructor(private readonly bucket: R2Bucket) {}
 
@@ -222,6 +230,87 @@ export async function backgroundResponse(storage: ObjectStorage, share: ShareRec
   }
   const headers = new Headers();
   headers.set("content-type", object.contentType ?? share.background_mime);
+  headers.set("cache-control", "private, max-age=60");
+  if (object.size !== null) {
+    headers.set("content-length", String(object.size));
+  }
+  if (object.etag) {
+    headers.set("etag", object.etag);
+  }
+  return new Response(object.body, {
+    status: 200,
+    headers,
+  });
+}
+
+export async function readGlobalBackgroundConfig(
+  storage: ObjectStorage,
+): Promise<GlobalBackgroundConfig | null> {
+  const object = await storage.getObject(GLOBAL_BACKGROUND_MANIFEST_KEY);
+  if (object?.body === null || object === null) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(await new Response(object.body).text()) as Record<string, unknown>;
+    const path = typeof payload.path === "string" ? payload.path : "";
+    const mime = typeof payload.mime === "string" ? payload.mime : "";
+    const updatedAt = typeof payload.updated_at === "string" ? payload.updated_at : "";
+    if (!path || !mime || !updatedAt) {
+      return null;
+    }
+    return {
+      path,
+      mime,
+      updated_at: updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function persistGlobalBackgroundUpload(options: {
+  storage: ObjectStorage;
+  settings: AppSettings;
+  backgroundFile: File;
+}): Promise<GlobalBackgroundConfig> {
+  const backgroundMime = normalizeMimeType(options.backgroundFile.type, {
+    allowed: options.settings.allowedImageMimeTypes,
+    fieldName: "background content_type",
+  });
+  if (options.backgroundFile.size > options.settings.maxCoverUploadBytes) {
+    throw new ApiError(413, `Upload exceeds ${options.settings.maxCoverUploadBytes} bytes.`);
+  }
+
+  const backgroundPath = `settings/background${extensionForMime(backgroundMime)}`;
+  const config: GlobalBackgroundConfig = {
+    path: backgroundPath,
+    mime: backgroundMime,
+    updated_at: nowIso(),
+  };
+
+  await options.storage.putObject(backgroundPath, await options.backgroundFile.arrayBuffer(), backgroundMime);
+  await options.storage.putObject(
+    GLOBAL_BACKGROUND_MANIFEST_KEY,
+    JSON.stringify(config),
+    "application/json; charset=utf-8",
+  );
+  return config;
+}
+
+export async function globalBackgroundResponse(storage: ObjectStorage): Promise<Response> {
+  const config = await readGlobalBackgroundConfig(storage);
+  if (config === null) {
+    throw new ApiError(404, "Background not found.");
+  }
+
+  const object = await storage.getObject(config.path);
+  if (object === null) {
+    throw new ApiError(404, "Background not found.");
+  }
+
+  const headers = new Headers();
+  headers.set("content-type", object.contentType ?? config.mime);
   headers.set("cache-control", "private, max-age=60");
   if (object.size !== null) {
     headers.set("content-length", String(object.size));

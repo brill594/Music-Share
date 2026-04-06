@@ -4,8 +4,8 @@
   --stroke: rgba(255, 255, 255, 0.11);
   --text: #f8eee0;
   --muted: #b9c5cf;
-  --accent: #79ffcb;
-  --secondary: #4dd9bf;
+  --accent: #ff8fb7;
+  --secondary: #ff5f95;
   --danger: #ff6b6b;
   --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-body: "Avenir Next", "Segoe UI", sans-serif;
@@ -34,9 +34,9 @@ body,
 body {
   overflow-x: hidden;
   background:
-    radial-gradient(circle at top left, rgba(121, 255, 203, 0.14), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(77, 217, 191, 0.12), transparent 24%),
-    linear-gradient(160deg, #071017 0%, #0b1520 55%, #0a1318 100%);
+    radial-gradient(circle at top left, rgba(255, 143, 183, 0.14), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(255, 95, 149, 0.12), transparent 24%),
+    linear-gradient(160deg, #120810 0%, #170b16 55%, #130912 100%);
   color: var(--text);
 }
 
@@ -46,8 +46,8 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 20% 20%, rgba(121, 255, 203, 0.09), transparent 18%),
-    radial-gradient(circle at 80% 10%, rgba(77, 217, 191, 0.07), transparent 18%),
+    radial-gradient(circle at 20% 20%, rgba(255, 143, 183, 0.09), transparent 18%),
+    radial-gradient(circle at 80% 10%, rgba(255, 95, 149, 0.07), transparent 18%),
     radial-gradient(circle at 70% 78%, rgba(255, 255, 255, 0.03), transparent 22%);
 }
 
@@ -194,8 +194,8 @@ button {
 .state-page__primary {
   padding: 12px 20px;
   border-radius: 999px;
-  color: #0a1f18;
-  background: linear-gradient(120deg, rgba(121, 255, 203, 0.92), rgba(77, 217, 191, 0.88));
+  color: #2d0f1d;
+  background: linear-gradient(120deg, rgba(255, 143, 183, 0.92), rgba(255, 95, 149, 0.88));
 }
 
 .app-shell--desktop .page-card--wide {

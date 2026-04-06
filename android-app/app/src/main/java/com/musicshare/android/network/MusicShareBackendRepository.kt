@@ -163,7 +163,18 @@ class MusicShareBackendRepository(
             )
         }
 
-    suspend fun uploadAdminTrackBackground(shareCode: String, imageUri: Uri): ShareItemDto =
+    suspend fun getAdminBackground(): AdminBackgroundDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("admin/background").build())
+                    .applySession(session)
+                    .get()
+                    .build(),
+            )
+        }
+
+    suspend fun uploadAdminBackground(imageUri: Uri): AdminBackgroundDto =
         withAuthorizedSession(preferAdmin = true) { state, session ->
             val staged = stageImageUpload(imageUri)
             try {
@@ -171,9 +182,7 @@ class MusicShareBackendRepository(
                     Request.Builder()
                         .url(
                             resolveBaseUrl(state).newBuilder()
-                                .addPathSegments("admin/tracks")
-                                .addPathSegment(shareCode)
-                                .addPathSegment("background")
+                                .addPathSegments("admin/background")
                                 .build(),
                         )
                         .applySession(session)

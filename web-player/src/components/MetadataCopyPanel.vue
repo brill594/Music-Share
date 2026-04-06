@@ -164,7 +164,7 @@ function handleToggle(item: MetadataItem): void {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(145deg, rgba(121, 255, 203, 0.12), transparent 38%),
+    linear-gradient(145deg, rgba(255, 143, 183, 0.12), transparent 38%),
     var(--track-page-panel-bg, rgba(255, 255, 255, 0.04));
   box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
   min-height: 348px;
@@ -187,7 +187,7 @@ function handleToggle(item: MetadataItem): void {
 .copy-panel__button {
   padding: 12px 18px;
   border-radius: 999px;
-  background: var(--track-page-action-bg, rgba(121, 255, 203, 0.16));
+  background: var(--track-page-action-bg, rgba(255, 143, 183, 0.22));
   color: var(--text);
 }
 

@@ -59,7 +59,7 @@ const progressWidth = computed(() => {
 }
 
 .status-banner--info {
-  box-shadow: inset 0 0 0 1px rgba(121, 255, 203, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 143, 183, 0.22);
 }
 
 .status-banner--warning {
@@ -71,7 +71,7 @@ const progressWidth = computed(() => {
 }
 
 .status-banner--success {
-  box-shadow: inset 0 0 0 1px rgba(153, 226, 167, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 143, 183, 0.22);
 }
 
 .status-banner__content {
@@ -121,7 +121,7 @@ const progressWidth = computed(() => {
 .status-banner__progress-bar {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(77, 217, 191, 0.96), rgba(121, 255, 203, 0.96));
+  background: linear-gradient(90deg, rgba(255, 95, 149, 0.96), rgba(255, 143, 183, 0.96));
   animation: progress-pulse 1.8s ease-in-out infinite;
 }
 

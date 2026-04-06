@@ -44,6 +44,13 @@ data class ShareListResponse(
     val items: List<ShareItemDto> = emptyList(),
 )
 
+@Serializable
+data class AdminBackgroundDto(
+    val configured: Boolean = false,
+    @SerialName("background_url") val backgroundUrl: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
 data class PreparedUpload(
     val audioFile: java.io.File,
     val audioMimeType: String,
