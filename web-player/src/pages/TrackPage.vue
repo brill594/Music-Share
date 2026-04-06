@@ -200,8 +200,44 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .track-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: grid;
   gap: 22px;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: transparent;
+  backdrop-filter: blur(34px) saturate(1.15);
+  -webkit-backdrop-filter: blur(34px) saturate(1.15);
+  box-shadow:
+    0 32px 90px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.track-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    var(--track-page-custom-bg, none),
+    radial-gradient(circle at top left, rgba(235, 248, 245, 0.18), transparent 34%),
+    linear-gradient(140deg, rgba(244, 248, 246, 0.16), rgba(216, 228, 231, 0.08));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0.96;
+}
+
+.track-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.04) 28%, rgba(9, 15, 22, 0.10) 100%),
+    rgba(18, 28, 38, 0.34);
+  pointer-events: none;
 }
 
 .track-page__stack {
