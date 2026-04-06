@@ -201,12 +201,14 @@ onBeforeUnmount(() => {
 .audio-player {
   display: grid;
   gap: 22px;
+  align-content: start;
   padding: 24px;
   border-radius: 24px;
   background:
     linear-gradient(135deg, rgba(121, 255, 203, 0.10), transparent 40%),
     rgba(255, 255, 255, 0.04);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  min-height: 348px;
 }
 
 .audio-player__native {
@@ -318,6 +320,7 @@ onBeforeUnmount(() => {
 
 .app-shell--mobile .audio-player {
   gap: 18px;
+  min-height: auto;
   padding: 20px;
   border-radius: 20px;
 }
