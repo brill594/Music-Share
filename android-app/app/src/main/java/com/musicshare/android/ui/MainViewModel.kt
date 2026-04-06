@@ -122,6 +122,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun uploadAdminShareBackground(shareCode: String, uri: Uri?) {
+        if (uri == null) return
+        viewModelScope.launch {
+            runCatching {
+                container.backendRepository.uploadAdminTrackBackground(shareCode, uri)
+            }.onSuccess {
+                refreshShares()
+                messages.tryEmit("背景图已上传。")
+            }.onFailure { error ->
+                messages.tryEmit(error.message ?: "背景图上传失败。")
+            }
+        }
+    }
+
     fun exportConfig(uri: Uri?) {
         if (uri == null) return
         viewModelScope.launch {

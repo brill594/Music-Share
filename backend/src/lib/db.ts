@@ -18,6 +18,8 @@ function toShareRecord(row: RawShareRecord): ShareRecord {
     audio_path: String(row.audio_path),
     cover_mime: row.cover_mime == null ? null : String(row.cover_mime),
     cover_path: row.cover_path == null ? null : String(row.cover_path),
+    background_mime: row.background_mime == null ? null : String(row.background_mime),
+    background_path: row.background_path == null ? null : String(row.background_path),
     created_at: String(row.created_at),
     client_created_at: row.client_created_at == null ? null : String(row.client_created_at),
     expires_at: String(row.expires_at),
@@ -54,8 +56,9 @@ export class D1ShareRepository implements ShareRepository {
           INSERT INTO shares (
             uuid, share_code, client_install_id, title, artist, album,
             duration_ms, audio_mime, audio_path, cover_mime, cover_path,
-            created_at, client_created_at, expires_at, terminated_at, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            background_mime, background_path, created_at, client_created_at,
+            expires_at, terminated_at, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .bind(
@@ -70,6 +73,8 @@ export class D1ShareRepository implements ShareRepository {
         share.audio_path,
         share.cover_mime,
         share.cover_path,
+        share.background_mime,
+        share.background_path,
         share.created_at,
         share.client_created_at,
         share.expires_at,
@@ -99,6 +104,23 @@ export class D1ShareRepository implements ShareRepository {
       .bind(clientInstallId)
       .all<RawShareRecord>();
     return (result.results ?? []).map(toShareRecord);
+  }
+
+  async updateShareBackground(
+    shareCode: string,
+    backgroundMime: string | null,
+    backgroundPath: string | null,
+  ): Promise<void> {
+    await this.database
+      .prepare(
+        `
+          UPDATE shares
+          SET background_mime = ?, background_path = ?
+          WHERE share_code = ?
+        `,
+      )
+      .bind(backgroundMime, backgroundPath, shareCode)
+      .run();
   }
 
   async listAllShares(): Promise<ShareRecord[]> {

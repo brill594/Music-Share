@@ -70,6 +70,8 @@ export async function createShareRecord(options: {
     audio_path: `shares/${shareUuid}/audio${audioExtension}`,
     cover_mime: null,
     cover_path: null,
+    background_mime: null,
+    background_path: null,
     created_at: nowIso(),
     client_created_at: options.clientCreatedAt,
     expires_at: options.expiresAt,
@@ -136,6 +138,9 @@ export async function deleteShareAssets(storage: ObjectStorage, share: ShareReco
   if (share.cover_path) {
     await storage.deleteObject(share.cover_path);
   }
+  if (share.background_path) {
+    await storage.deleteObject(share.background_path);
+  }
 }
 
 export async function audioResponse(storage: ObjectStorage, share: ShareRecord): Promise<Response> {
@@ -169,6 +174,51 @@ export async function coverResponse(storage: ObjectStorage, share: ShareRecord):
   }
   const headers = new Headers();
   headers.set("content-type", object.contentType ?? share.cover_mime);
+  headers.set("cache-control", "private, max-age=60");
+  if (object.size !== null) {
+    headers.set("content-length", String(object.size));
+  }
+  if (object.etag) {
+    headers.set("etag", object.etag);
+  }
+  return new Response(object.body, {
+    status: 200,
+    headers,
+  });
+}
+
+export async function persistBackgroundUpload(options: {
+  storage: ObjectStorage;
+  settings: AppSettings;
+  share: ShareRecord;
+  backgroundFile: File;
+}): Promise<Pick<ShareRecord, "background_mime" | "background_path">> {
+  const backgroundMime = normalizeMimeType(options.backgroundFile.type, {
+    allowed: options.settings.allowedImageMimeTypes,
+    fieldName: "background content_type",
+  });
+  if (options.backgroundFile.size > options.settings.maxCoverUploadBytes) {
+    throw new ApiError(413, `Upload exceeds ${options.settings.maxCoverUploadBytes} bytes.`);
+  }
+
+  const backgroundPath = `shares/${options.share.uuid}/background${extensionForMime(backgroundMime)}`;
+  await options.storage.putObject(backgroundPath, await options.backgroundFile.arrayBuffer(), backgroundMime);
+  return {
+    background_mime: backgroundMime,
+    background_path: backgroundPath,
+  };
+}
+
+export async function backgroundResponse(storage: ObjectStorage, share: ShareRecord): Promise<Response> {
+  if (share.background_path === null || share.background_mime === null) {
+    throw new ApiError(404, "Background not found.");
+  }
+  const object = await storage.getObject(share.background_path);
+  if (object === null) {
+    throw new ApiError(404, "Background not found.");
+  }
+  const headers = new Headers();
+  headers.set("content-type", object.contentType ?? share.background_mime);
   headers.set("cache-control", "private, max-age=60");
   if (object.size !== null) {
     headers.set("content-length", String(object.size));

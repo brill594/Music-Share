@@ -1,14 +1,18 @@
 package com.musicshare.android.network
 
 import android.content.Context
+import android.net.Uri
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.data.SessionSnapshot
 import com.musicshare.android.util.UserVisibleException
 import com.musicshare.android.util.normalizeBaseUrl
 import com.musicshare.android.util.nowIso
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -159,6 +163,37 @@ class MusicShareBackendRepository(
             )
         }
 
+    suspend fun uploadAdminTrackBackground(shareCode: String, imageUri: Uri): ShareItemDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            val staged = stageImageUpload(imageUri)
+            try {
+                executeJson(
+                    Request.Builder()
+                        .url(
+                            resolveBaseUrl(state).newBuilder()
+                                .addPathSegments("admin/tracks")
+                                .addPathSegment(shareCode)
+                                .addPathSegment("background")
+                                .build(),
+                        )
+                        .applySession(session)
+                        .post(
+                            MultipartBody.Builder()
+                                .setType(MultipartBody.FORM)
+                                .addFormDataPart(
+                                    name = "background",
+                                    filename = staged.file.name,
+                                    body = staged.file.asRequestBody(staged.mimeType.toMediaType()),
+                                )
+                                .build(),
+                        )
+                        .build(),
+                )
+            } finally {
+                staged.file.delete()
+            }
+        }
+
     suspend fun clearSession() {
         stateStore.update {
             it.copy(session = SessionSnapshot())
@@ -248,6 +283,24 @@ class MusicShareBackendRepository(
         }.getOrNull()
     }
 
+    private fun stageImageUpload(imageUri: Uri): StagedImageUpload {
+        val mimeType = context.contentResolver.getType(imageUri)?.lowercase(Locale.US)
+            ?.takeIf { it == "image/jpeg" || it == "image/png" || it == "image/webp" }
+            ?: throw UserVisibleException("仅支持 JPEG、PNG 或 WebP 图片。")
+        val suffix = when (mimeType) {
+            "image/jpeg" -> ".jpg"
+            "image/png" -> ".png"
+            else -> ".webp"
+        }
+        val file = File.createTempFile("music-share-background-${UUID.randomUUID()}", suffix, context.cacheDir)
+        context.contentResolver.openInputStream(imageUri)?.use { input ->
+            FileOutputStream(file).use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw UserVisibleException("无法读取所选图片。")
+        return StagedImageUpload(file = file, mimeType = mimeType)
+    }
+
     private fun mapCallError(error: Throwable, requestUrl: HttpUrl): UserVisibleException {
         return when (error) {
             is UserVisibleException -> error
@@ -291,4 +344,9 @@ class MusicShareBackendRepository(
     }
 
     private class SessionExpiredException : IOException()
+
+    private data class StagedImageUpload(
+        val file: File,
+        val mimeType: String,
+    )
 }

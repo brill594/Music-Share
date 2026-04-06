@@ -22,12 +22,24 @@ const currentShareCode = computed(() => {
 });
 
 const pageBackdropStyle = computed(() => {
-  if (!track.value?.cover_url) {
+  const backgroundUrl = track.value?.background_url ?? track.value?.cover_url ?? "";
+  if (!backgroundUrl) {
     return {};
   }
 
   return {
-    backgroundImage: `url("${track.value.cover_url}")`,
+    backgroundImage: `url("${backgroundUrl}")`,
+  };
+});
+
+const trackPageSurfaceStyle = computed(() => {
+  const backgroundUrl = track.value?.background_url ?? "";
+  if (!backgroundUrl) {
+    return {};
+  }
+
+  return {
+    "--track-page-custom-bg": `url("${backgroundUrl}")`,
   };
 });
 
@@ -134,7 +146,7 @@ onBeforeUnmount(() => {
     <div class="page-shell__grain"></div>
 
     <main class="page-shell__content">
-      <div class="track-page-surface">
+      <div class="track-page-surface" :style="trackPageSurfaceStyle">
         <section class="page-card page-card--wide track-page">
           <StatusBanner
             :tone="bannerTone"

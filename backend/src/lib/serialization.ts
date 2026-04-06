@@ -14,6 +14,7 @@ function buildShareUrls(settings: AppSettings, request: Request, share: ShareRec
     track_url: `${apiBase}/track/${share.share_code}`,
     stream_url: `${apiBase}/stream/${share.share_code}`,
     cover_url: share.cover_path ? `${apiBase}/cover/${share.share_code}` : null,
+    background_url: share.background_path ? `${apiBase}/background/${share.share_code}` : null,
   };
 }
 
@@ -30,6 +31,7 @@ export function serializeSharePublic(settings: AppSettings, request: Request, sh
     track_url: urls.track_url,
     stream_url: urls.stream_url,
     cover_url: urls.cover_url,
+    background_url: urls.background_url,
     created_at: share.created_at,
     expires_at: share.expires_at,
     status: effectiveStatus(share),

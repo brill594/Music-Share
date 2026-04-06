@@ -24,6 +24,7 @@ export interface PublicTrack {
   track_url: string;
   stream_url: string;
   cover_url: string | null;
+  background_url: string | null;
   created_at: string;
   expires_at: string;
   status: ShareStatus;

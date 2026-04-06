@@ -16,10 +16,12 @@ import {
 import { effectiveStatus, nowIso, type SessionRecord, type ShareRecord } from "./models";
 import {
   audioResponse,
+  backgroundResponse,
   coverResponse,
   createShareRecord,
   deleteShareAssets,
   persistUploads,
+  persistBackgroundUpload,
   R2ObjectStorage,
 } from "./storage";
 import {
@@ -232,6 +234,15 @@ async function handleCover(context: AppContext, shareCode: string): Promise<Resp
   return coverResponse(context.storage, share);
 }
 
+async function handleBackground(context: AppContext, shareCode: string): Promise<Response> {
+  const share = await getShareOr404(context.repository, shareCode);
+  const status = effectiveStatus(share);
+  if (status !== "active") {
+    throw new ApiError(410, `Share is ${status}.`);
+  }
+  return backgroundResponse(context.storage, share);
+}
+
 async function handleListClientShares(request: Request, context: AppContext): Promise<Response> {
   await getAuthenticatedSession(request, context, false);
   const clientInstallId = requireClientInstallId(request);
@@ -270,8 +281,15 @@ async function handleTerminateClientShare(
   if (share.client_install_id !== clientInstallId) {
     throw new ApiError(404, "Share not found.");
   }
-  await context.repository.terminateShare(shareCode, nowIso());
-  const updated = await getShareOr404(context.repository, shareCode);
+  const terminatedAt = nowIso();
+  await context.repository.terminateShare(shareCode, terminatedAt);
+  const updated: ShareRecord = {
+    ...share,
+    terminated_at: share.terminated_at ?? terminatedAt,
+    status: "terminated",
+  };
+  await deleteShareAssets(context.storage, updated);
+  await context.repository.deleteShare(share.uuid);
   return jsonResponse(serializeShareManagement(context.settings, request, updated));
 }
 
@@ -295,8 +313,67 @@ async function handleTerminateAdminTrack(
   shareCode: string,
 ): Promise<Response> {
   await getAuthenticatedSession(request, context, true);
-  await getShareOr404(context.repository, shareCode);
-  await context.repository.terminateShare(shareCode, nowIso());
+  const share = await getShareOr404(context.repository, shareCode);
+  const terminatedAt = nowIso();
+  await context.repository.terminateShare(shareCode, terminatedAt);
+  const updated: ShareRecord = {
+    ...share,
+    terminated_at: share.terminated_at ?? terminatedAt,
+    status: "terminated",
+  };
+  await deleteShareAssets(context.storage, updated);
+  await context.repository.deleteShare(share.uuid);
+  return jsonResponse(
+    serializeShareManagement(context.settings, request, updated, {
+      includeClientInstallId: true,
+    }),
+  );
+}
+
+async function handleUploadAdminTrackBackground(
+  request: Request,
+  context: AppContext,
+  shareCode: string,
+): Promise<Response> {
+  await getAuthenticatedSession(request, context, true);
+
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    throw new ApiError(422, "Request body must be multipart form data.");
+  }
+
+  const backgroundFile = readFormFile(form, "background", true);
+  if (backgroundFile === null) {
+    throw new ApiError(422, "background is required.");
+  }
+
+  const share = await getShareOr404(context.repository, shareCode);
+  const previousBackgroundPath = share.background_path;
+
+  const persisted = await persistBackgroundUpload({
+    storage: context.storage,
+    settings: context.settings,
+    share,
+    backgroundFile,
+  });
+
+  try {
+    await context.repository.updateShareBackground(shareCode, persisted.background_mime, persisted.background_path);
+  } catch (error) {
+    await context.storage.deleteObject(persisted.background_path);
+    throw error;
+  }
+
+  if (previousBackgroundPath && previousBackgroundPath !== persisted.background_path) {
+    try {
+      await context.storage.deleteObject(previousBackgroundPath);
+    } catch {
+      // Best effort cleanup for replaced backgrounds.
+    }
+  }
+
   const updated = await getShareOr404(context.repository, shareCode);
   return jsonResponse(
     serializeShareManagement(context.settings, request, updated, {
@@ -327,6 +404,9 @@ async function routeRequest(request: Request, context: AppContext): Promise<Resp
   if (request.method === "GET" && segments.length === 2 && segments[0] === "cover") {
     return handleCover(context, segments[1]);
   }
+  if (request.method === "GET" && segments.length === 2 && segments[0] === "background") {
+    return handleBackground(context, segments[1]);
+  }
   if (request.method === "GET" && url.pathname === "/client/shares") {
     return handleListClientShares(request, context);
   }
@@ -344,6 +424,15 @@ async function routeRequest(request: Request, context: AppContext): Promise<Resp
   }
   if (request.method === "GET" && url.pathname === "/admin/tracks") {
     return handleListAdminTracks(request, context);
+  }
+  if (
+    request.method === "POST" &&
+    segments.length === 4 &&
+    segments[0] === "admin" &&
+    segments[1] === "tracks" &&
+    segments[3] === "background"
+  ) {
+    return handleUploadAdminTrackBackground(request, context, segments[2]);
   }
   if (
     request.method === "POST" &&

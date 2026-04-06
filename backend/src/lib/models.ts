@@ -22,6 +22,8 @@ export interface ShareRecord {
   audio_path: string;
   cover_mime: string | null;
   cover_path: string | null;
+  background_mime: string | null;
+  background_path: string | null;
   created_at: string;
   client_created_at: string | null;
   expires_at: string;

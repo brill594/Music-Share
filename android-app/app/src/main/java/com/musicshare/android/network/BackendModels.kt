@@ -29,6 +29,7 @@ data class ShareItemDto(
     @SerialName("track_url") val trackUrl: String,
     @SerialName("stream_url") val streamUrl: String,
     @SerialName("cover_url") val coverUrl: String? = null,
+    @SerialName("background_url") val backgroundUrl: String? = null,
     @SerialName("created_at") val createdAt: String,
     @SerialName("expires_at") val expiresAt: String,
     val status: String,

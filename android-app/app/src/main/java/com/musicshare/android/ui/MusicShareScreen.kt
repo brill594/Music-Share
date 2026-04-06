@@ -61,6 +61,7 @@ fun MusicShareScreen(
     onRefreshShares: () -> Unit,
     onTerminateClientShare: (String) -> Unit,
     onTerminateAdminShare: (String) -> Unit,
+    onUploadAdminBackground: (String) -> Unit,
     onExportConfig: () -> Unit,
     onImportConfigPreserveId: () -> Unit,
     onImportConfigReplaceId: () -> Unit,
@@ -107,6 +108,7 @@ fun MusicShareScreen(
                     onRefreshShares = onRefreshShares,
                     onTerminateClientShare = onTerminateClientShare,
                     onTerminateAdminShare = onTerminateAdminShare,
+                    onUploadAdminBackground = onUploadAdminBackground,
                 )
                 else -> SettingsTab(
                     appState = uiState.appState,
@@ -209,6 +211,7 @@ private fun ShareManagementTab(
     onRefreshShares: () -> Unit,
     onTerminateClientShare: (String) -> Unit,
     onTerminateAdminShare: (String) -> Unit,
+    onUploadAdminBackground: (String) -> Unit,
 ) {
     val scrollState = rememberScrollState()
     Column(
@@ -256,6 +259,7 @@ private fun ShareManagementTab(
                 title = "后端管理",
                 items = adminShares,
                 onTerminate = onTerminateAdminShare,
+                onUploadBackground = onUploadAdminBackground,
             )
         } else {
             HighlightCard(
@@ -490,6 +494,7 @@ private fun ShareSection(
     title: String,
     items: List<ShareItemDto>,
     onTerminate: (String) -> Unit,
+    onUploadBackground: ((String) -> Unit)? = null,
 ) {
     HighlightCard(
         title = title,
@@ -520,6 +525,9 @@ private fun ShareSection(
                             }",
                         )
                         Text("过期：${formatDisplayTime(item.expiresAt)}")
+                        if (item.backgroundUrl != null) {
+                            Text("背景图：已配置", style = MaterialTheme.typography.bodySmall)
+                        }
                         HorizontalDivider()
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(
@@ -527,6 +535,11 @@ private fun ShareSection(
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.weight(1f),
                             )
+                            if (onUploadBackground != null) {
+                                TextButton(onClick = { onUploadBackground(item.shareCode) }) {
+                                    Text("背景图")
+                                }
+                            }
                             TextButton(onClick = { onTerminate(item.shareCode) }) {
                                 Text("结束")
                             }

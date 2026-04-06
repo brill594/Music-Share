@@ -6,6 +6,7 @@ export interface ShareRepository {
   getShareByCode(shareCode: string): Promise<ShareRecord | null>;
   listSharesByClient(clientInstallId: string): Promise<ShareRecord[]>;
   listAllShares(): Promise<ShareRecord[]>;
+  updateShareBackground(shareCode: string, backgroundMime: string | null, backgroundPath: string | null): Promise<void>;
   terminateShare(shareCode: string, terminatedAt: string): Promise<void>;
   listCleanupCandidates(nowIso: string): Promise<ShareRecord[]>;
   deleteShare(shareUuid: string): Promise<void>;

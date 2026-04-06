@@ -36,6 +36,24 @@ class MemoryRepository implements ShareRepository {
       .map((share) => structuredClone(share));
   }
 
+  async updateShareBackground(
+    shareCode: string,
+    backgroundMime: string | null,
+    backgroundPath: string | null,
+  ): Promise<void> {
+    for (const [uuid, share] of this.shares.entries()) {
+      if (share.share_code !== shareCode) {
+        continue;
+      }
+      this.shares.set(uuid, {
+        ...share,
+        background_mime: backgroundMime,
+        background_path: backgroundPath,
+      });
+      return;
+    }
+  }
+
   async terminateShare(shareCode: string, terminatedAt: string): Promise<void> {
     for (const [uuid, share] of this.shares.entries()) {
       if (share.share_code !== shareCode) {
@@ -316,7 +334,9 @@ describe("Cloudflare Worker backend compatibility", () => {
     const goneResponse = await harness.request({
       path: `/track/${shareCode}`,
     });
-    expect(goneResponse.status).toBe(410);
+    expect(goneResponse.status).toBe(404);
+    expect(harness.storage.has(`shares/${shareUuid}/audio.ogg`)).toBe(false);
+    expect(harness.storage.has(`shares/${shareUuid}/cover.jpg`)).toBe(false);
   });
 
   it("handles CORS preflight requests", async () => {
@@ -375,6 +395,50 @@ describe("Cloudflare Worker backend compatibility", () => {
     };
     expect(terminatePayload.status).toBe("terminated");
     expect(terminatePayload.client_install_id).toBe("install-0001");
+
+    const listAfterTerminate = await harness.request({
+      path: "/admin/tracks",
+      headers: {
+        "X-Session-Key": adminSession,
+      },
+    });
+    const listAfterPayload = (await listAfterTerminate.json()) as { count: number };
+    expect(listAfterPayload.count).toBe(0);
+  });
+
+  it("allows admin background upload and public background fetch", async () => {
+    const harness = createHarness();
+    const { sessionKey: userSession } = await login(harness, "user-password");
+    const uploaded = await uploadSample(harness, userSession);
+    const shareCode = String(uploaded.share_code);
+    const shareUuid = String(uploaded.uuid);
+    const { sessionKey: adminSession } = await login(harness, "admin-password");
+
+    const form = new FormData();
+    form.set(
+      "background",
+      new File([new Uint8Array([8, 7, 6, 5])], "background.webp", { type: "image/webp" }),
+    );
+
+    const updateResponse = await harness.request({
+      path: `/admin/tracks/${shareCode}/background`,
+      method: "POST",
+      headers: {
+        "X-Session-Key": adminSession,
+      },
+      body: form,
+    });
+    expect(updateResponse.status).toBe(200);
+    const updatePayload = (await updateResponse.json()) as { background_url?: string };
+    expect(updatePayload.background_url).toBe(`https://api.example.test/background/${shareCode}`);
+    expect(harness.storage.has(`shares/${shareUuid}/background.webp`)).toBe(true);
+
+    const backgroundResponse = await harness.request({
+      path: `/background/${shareCode}`,
+    });
+    expect(backgroundResponse.status).toBe(200);
+    expect(backgroundResponse.headers.get("content-type")).toBe("image/webp");
+    expect(new Uint8Array(await backgroundResponse.arrayBuffer())).toEqual(new Uint8Array([8, 7, 6, 5]));
   });
 
   it("cleans up expired shares and expired sessions", async () => {
@@ -435,6 +499,8 @@ describe("Cloudflare Worker backend compatibility", () => {
       audio_path: "shares/share-1/audio.ogg",
       cover_mime: null,
       cover_path: null,
+      background_mime: null,
+      background_path: null,
       created_at: "2026-04-05T00:00:00.000Z",
       client_created_at: null,
       expires_at: "2026-04-05T00:01:00.000Z",

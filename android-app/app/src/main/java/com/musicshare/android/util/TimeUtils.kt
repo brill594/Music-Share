@@ -39,7 +39,7 @@ fun formatShareExpiryStatus(
     val secondsToExpiry = remainingSeconds ?: secondsUntil(expiresAt)
 
     return when (normalizedStatus) {
-        "terminated" -> "已终止"
+        "terminated" -> "已结束分享"
         "expired" -> "已过期${formatElapsedSuffix(secondsToExpiry)}"
         else -> {
             val safeSeconds = secondsToExpiry ?: 0L
