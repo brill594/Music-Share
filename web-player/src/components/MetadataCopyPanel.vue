@@ -203,8 +203,8 @@ function handleToggle(item: MetadataItem): void {
 .copy-panel__item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 12px;
   min-height: 64px;
   padding: 14px 16px;
   border-radius: 18px;
@@ -233,8 +233,9 @@ function handleToggle(item: MetadataItem): void {
   min-width: 0;
   flex: 1 1 auto;
   display: block;
-  max-width: min(100%, 240px);
-  text-align: right;
+  max-width: min(100%, 280px);
+  text-align: left;
+  user-select: text;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -246,6 +247,7 @@ function handleToggle(item: MetadataItem): void {
   display: inline-block;
   min-width: 100%;
   white-space: nowrap;
+  cursor: text;
 }
 
 .copy-panel__item-value::-webkit-scrollbar {

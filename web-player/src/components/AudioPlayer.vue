@@ -72,18 +72,6 @@ async function togglePlayback(): Promise<void> {
   }
 }
 
-function stopPlayback(): void {
-  const audio = audioRef.value;
-  if (!audio) {
-    return;
-  }
-
-  audio.pause();
-  audio.currentTime = 0;
-  currentTime.value = 0;
-  isPlaying.value = false;
-}
-
 function handleLoadedMetadata(): void {
   const audio = audioRef.value;
   if (!audio) {
@@ -191,7 +179,6 @@ onBeforeUnmount(() => {
         <button class="audio-player__primary" type="button" @click="void togglePlayback()">
           {{ isPlaying ? "暂停" : "播放" }}
         </button>
-        <button class="audio-player__ghost" type="button" @click="stopPlayback">停止</button>
       </div>
     </div>
   </section>
@@ -201,7 +188,7 @@ onBeforeUnmount(() => {
 .audio-player {
   display: grid;
   gap: 22px;
-  align-content: start;
+  align-content: center;
   padding: 24px;
   border-radius: 24px;
   background:
@@ -297,14 +284,13 @@ onBeforeUnmount(() => {
 
 .audio-player__controls {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
 }
 
-.audio-player__primary,
-.audio-player__ghost {
+.audio-player__primary {
   min-width: 110px;
-  padding: 12px 18px;
+  padding: 12px 26px;
   border-radius: 999px;
   color: var(--text);
 }
@@ -312,10 +298,6 @@ onBeforeUnmount(() => {
 .audio-player__primary {
   background: linear-gradient(120deg, rgba(121, 255, 203, 0.90), rgba(77, 217, 191, 0.90));
   color: #0a1f18;
-}
-
-.audio-player__ghost {
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .app-shell--mobile .audio-player {
@@ -346,18 +328,24 @@ onBeforeUnmount(() => {
 }
 
 .app-shell--mobile .audio-player__controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.app-shell--mobile .audio-player__primary,
-.app-shell--mobile .audio-player__ghost {
-  min-width: 0;
-  width: 100%;
+  display: flex;
+  justify-content: stretch;
 }
 
 .app-shell--mobile .audio-player__primary {
+  min-width: 0;
+  width: 100%;
   color: #0a1f18;
+}
+
+.app-shell--desktop .audio-player {
+  padding-block: 30px;
+}
+
+.app-shell--desktop .audio-player__timeline,
+.app-shell--desktop .audio-player__footer {
+  width: min(100%, 460px);
+  justify-self: center;
 }
 
 @media (max-width: 720px) {

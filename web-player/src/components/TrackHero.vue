@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 
 import placeholderCoverUrl from "@/assets/cover-placeholder.svg";
-import { formatDateTime, formatDurationMs, formatMimeLabel, formatRelativeExpiry } from "@/utils/format";
+import { formatDateTime, formatRelativeExpiry } from "@/utils/format";
 
 const props = defineProps<{
   title: string;
@@ -53,21 +53,14 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
         <p class="track-hero__album">{{ albumLabel }}</p>
       </div>
 
-      <div class="track-hero__details">
-        <div class="track-hero__chips">
-          <span>{{ formatDurationMs(durationMs) }}</span>
-          <span>{{ formatMimeLabel(audioMime) }}</span>
+      <div class="track-hero__meta-grid">
+        <div>
+          <p class="track-hero__label">过期提醒</p>
+          <p class="track-hero__value">{{ expiryHint }}</p>
         </div>
-
-        <div class="track-hero__meta-grid">
-          <div>
-            <p class="track-hero__label">过期提醒</p>
-            <p class="track-hero__value">{{ expiryHint }}</p>
-          </div>
-          <div>
-            <p class="track-hero__label">失效时间</p>
-            <p class="track-hero__value">{{ formatDateTime(expiresAt) }}</p>
-          </div>
+        <div>
+          <p class="track-hero__label">失效时间</p>
+          <p class="track-hero__value">{{ formatDateTime(expiresAt) }}</p>
         </div>
       </div>
     </div>
@@ -137,25 +130,6 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   font-size: 1rem;
 }
 
-.track-hero__details {
-  display: grid;
-  gap: 16px;
-}
-
-.track-hero__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.track-hero__chips span {
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  font-size: 0.92rem;
-}
-
 .track-hero__meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -200,16 +174,6 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   gap: 14px;
 }
 
-.app-shell--desktop .track-hero__details {
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-  align-items: start;
-  gap: 18px;
-}
-
-.app-shell--desktop .track-hero__chips {
-  align-self: start;
-}
-
 .app-shell--mobile .track-hero {
   grid-template-columns: 1fr;
   gap: 18px;
@@ -233,24 +197,9 @@ const expiryHint = computed(() => formatRelativeExpiry(props.expiresAt));
   font-size: clamp(2rem, 8vw, 3rem);
 }
 
-.app-shell--mobile .track-hero__chips {
-  gap: 8px;
-}
-
-.app-shell--mobile .track-hero__chips span {
-  width: fit-content;
-  max-width: 100%;
-}
-
 .app-shell--mobile .track-hero__meta-grid {
   grid-template-columns: 1fr;
   gap: 12px;
-}
-
-@media (max-width: 1040px) {
-  .app-shell--desktop .track-hero__details {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 840px) {
