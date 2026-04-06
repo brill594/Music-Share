@@ -103,14 +103,14 @@ button {
   background-repeat: no-repeat;
   background-size: cover;
   filter: blur(28px) saturate(0.82);
-  opacity: 0.3;
+  opacity: 0.5;
   transform: scale(1.1);
 }
 
 .page-shell__veil {
   background:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.06), transparent 38%),
-    linear-gradient(180deg, rgba(5, 10, 14, 0.28), rgba(5, 10, 14, 0.6));
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.04), transparent 38%),
+    linear-gradient(180deg, rgba(5, 10, 14, 0.15), rgba(5, 10, 14, 0.35));
 }
 
 .page-shell__grain {
@@ -210,7 +210,7 @@ button {
 }
 
 .app-shell--mobile .page-shell__cover {
-  opacity: 0.22;
+  opacity: 0.4;
   filter: blur(22px) saturate(0.8);
 }
 

@@ -229,14 +229,14 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: inherit;
   background-image:
-    radial-gradient(circle at top left, rgba(255, 210, 228, 0.16), transparent 34%),
-    linear-gradient(140deg, rgba(255, 241, 246, 0.24), rgba(245, 225, 234, 0.14));
+    radial-gradient(circle at top left, rgba(255, 210, 228, 0.10), transparent 34%),
+    linear-gradient(140deg, rgba(255, 241, 246, 0.12), rgba(245, 225, 234, 0.08));
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  opacity: 0.96;
-  backdrop-filter: blur(24px) saturate(1.08);
-  -webkit-backdrop-filter: blur(24px) saturate(1.08);
+  opacity: 0.82;
+  backdrop-filter: blur(20px) saturate(1.08);
+  -webkit-backdrop-filter: blur(20px) saturate(1.08);
   box-shadow:
     0 32px 90px rgba(0, 0, 0, 0.28),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -249,8 +249,8 @@ onBeforeUnmount(() => {
   z-index: 0;
   border-radius: inherit;
   background:
-    linear-gradient(180deg, rgba(255, 245, 249, 0.18), rgba(255, 239, 245, 0.08) 18%, rgba(38, 26, 34, 0.18) 48%, rgba(38, 26, 34, 0.34) 100%),
-    rgba(54, 38, 47, 0.42);
+    linear-gradient(180deg, rgba(255, 245, 249, 0.10), rgba(255, 239, 245, 0.04) 18%, rgba(38, 26, 34, 0.10) 48%, rgba(38, 26, 34, 0.20) 100%),
+    rgba(54, 38, 47, 0.25);
   pointer-events: none;
 }
 
@@ -267,9 +267,9 @@ onBeforeUnmount(() => {
 
 .track-page-surface--with-image::after {
   background:
-    linear-gradient(180deg, rgba(22, 12, 18, 0.24), rgba(22, 12, 18, 0.46) 24%, rgba(22, 12, 18, 0.68) 62%, rgba(22, 12, 18, 0.8) 100%),
-    radial-gradient(circle at 18% 12%, rgba(255, 219, 232, 0.14), transparent 28%),
-    rgba(28, 14, 21, 0.52);
+    linear-gradient(180deg, rgba(22, 12, 18, 0.14), rgba(22, 12, 18, 0.28) 24%, rgba(22, 12, 18, 0.42) 62%, rgba(22, 12, 18, 0.56) 100%),
+    radial-gradient(circle at 18% 12%, rgba(255, 219, 232, 0.10), transparent 28%),
+    rgba(28, 14, 21, 0.30);
 }
 
 .track-page {

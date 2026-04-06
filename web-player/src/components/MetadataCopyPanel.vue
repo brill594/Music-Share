@@ -239,14 +239,13 @@ function handleToggle(item: MetadataItem): void {
   min-width: 0;
   flex: 1 1 auto;
   display: block;
-  max-width: min(100%, 280px);
+  max-width: 100%;
   text-align: left;
   line-height: 1.45;
   user-select: text;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  scrollbar-width: none;
   align-self: flex-start;
   padding-top: 2px;
   color: var(--text);
@@ -258,10 +257,6 @@ function handleToggle(item: MetadataItem): void {
   min-width: 100%;
   white-space: nowrap;
   cursor: text;
-}
-
-.copy-panel__item-value::-webkit-scrollbar {
-  display: none;
 }
 
 .copy-panel__item--disabled {
