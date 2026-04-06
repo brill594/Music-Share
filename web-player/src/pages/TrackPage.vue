@@ -33,6 +33,17 @@ const pageBackdropStyle = computed(() => {
 });
 const hasImageBackdrop = computed(() => Boolean(track.value?.background_url));
 
+function syncGlobalBackdrop(backgroundUrl: string | null | undefined): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.style.setProperty(
+    "--app-page-backdrop-image",
+    backgroundUrl ? `url("${backgroundUrl}")` : "none",
+  );
+}
+
 const audioDownloadLabel = computed(() => {
   const { loaded, total } = downloadProgress.value;
   if (total) {
@@ -124,7 +135,16 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => track.value?.background_url,
+  (backgroundUrl) => {
+    syncGlobalBackdrop(backgroundUrl);
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
+  syncGlobalBackdrop(null);
   trackStore.teardown();
 });
 </script>
@@ -210,8 +230,8 @@ onBeforeUnmount(() => {
   --muted: #d6dde5;
   --track-page-label: #e8c8d7;
   --track-page-heading-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
-  --track-page-panel-bg: rgba(44, 52, 63, 0.72);
-  --track-page-panel-bg-strong: rgba(34, 41, 52, 0.82);
+  --track-page-panel-bg: rgba(44, 52, 63, 0.18);
+  --track-page-panel-bg-strong: rgba(34, 41, 52, 0.24);
   --track-page-panel-border: rgba(255, 255, 255, 0.12);
   --track-page-action-bg: rgba(255, 134, 181, 0.24);
   position: relative;
@@ -229,14 +249,14 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: inherit;
   background-image:
-    radial-gradient(circle at top left, rgba(255, 210, 228, 0.10), transparent 34%),
-    linear-gradient(140deg, rgba(255, 241, 246, 0.12), rgba(245, 225, 234, 0.08));
+    radial-gradient(circle at top left, rgba(255, 210, 228, 0.08), transparent 34%),
+    linear-gradient(140deg, rgba(255, 241, 246, 0.08), rgba(245, 225, 234, 0.04));
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  opacity: 0.82;
-  backdrop-filter: blur(20px) saturate(1.08);
-  -webkit-backdrop-filter: blur(20px) saturate(1.08);
+  opacity: 0.42;
+  backdrop-filter: blur(12px) saturate(1.04);
+  -webkit-backdrop-filter: blur(12px) saturate(1.04);
   box-shadow:
     0 32px 90px rgba(0, 0, 0, 0.28),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -249,8 +269,8 @@ onBeforeUnmount(() => {
   z-index: 0;
   border-radius: inherit;
   background:
-    linear-gradient(180deg, rgba(255, 245, 249, 0.10), rgba(255, 239, 245, 0.04) 18%, rgba(38, 26, 34, 0.10) 48%, rgba(38, 26, 34, 0.20) 100%),
-    rgba(54, 38, 47, 0.25);
+    linear-gradient(180deg, rgba(255, 245, 249, 0.06), rgba(255, 239, 245, 0.03) 20%, rgba(38, 26, 34, 0.06) 48%, rgba(38, 26, 34, 0.14) 100%),
+    rgba(54, 38, 47, 0.08);
   pointer-events: none;
 }
 
@@ -259,17 +279,17 @@ onBeforeUnmount(() => {
   --muted: #e0e7ee;
   --track-page-label: #f1cddd;
   --track-page-heading-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
-  --track-page-panel-bg: rgba(36, 22, 31, 0.78);
-  --track-page-panel-bg-strong: rgba(24, 14, 22, 0.86);
+  --track-page-panel-bg: rgba(36, 22, 31, 0.16);
+  --track-page-panel-bg-strong: rgba(24, 14, 22, 0.22);
   --track-page-panel-border: rgba(255, 255, 255, 0.14);
   --track-page-action-bg: rgba(255, 134, 181, 0.34);
 }
 
 .track-page-surface--with-image::after {
   background:
-    linear-gradient(180deg, rgba(22, 12, 18, 0.14), rgba(22, 12, 18, 0.28) 24%, rgba(22, 12, 18, 0.42) 62%, rgba(22, 12, 18, 0.56) 100%),
-    radial-gradient(circle at 18% 12%, rgba(255, 219, 232, 0.10), transparent 28%),
-    rgba(28, 14, 21, 0.30);
+    linear-gradient(180deg, rgba(22, 12, 18, 0.05), rgba(22, 12, 18, 0.12) 24%, rgba(22, 12, 18, 0.18) 62%, rgba(22, 12, 18, 0.26) 100%),
+    radial-gradient(circle at 18% 12%, rgba(255, 219, 232, 0.08), transparent 28%),
+    rgba(28, 14, 21, 0.10);
 }
 
 .track-page {

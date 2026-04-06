@@ -9,6 +9,7 @@
   --danger: #ff6b6b;
   --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-body: "Avenir Next", "Segoe UI", sans-serif;
+  --app-page-backdrop-image: none;
   color-scheme: dark;
   font-family: var(--font-body);
   background: var(--bg);
@@ -31,12 +32,22 @@ body,
   margin: 0;
 }
 
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
 body {
   overflow-x: hidden;
   background:
+    var(--app-page-backdrop-image),
     radial-gradient(circle at top left, rgba(255, 143, 183, 0.14), transparent 30%),
     radial-gradient(circle at bottom right, rgba(255, 95, 149, 0.12), transparent 24%),
     linear-gradient(160deg, #120810 0%, #170b16 55%, #130912 100%);
+  background-position: center, top left, bottom right, center;
+  background-repeat: no-repeat;
+  background-size: cover, auto, auto, auto;
+  background-attachment: fixed, scroll, scroll, scroll;
   color: var(--text);
 }
 
@@ -99,22 +110,21 @@ button {
 }
 
 .page-shell__cover {
+  inset: -10vh -6vw;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(28px) saturate(0.82);
-  opacity: 0.5;
-  transform: scale(1.1);
+  filter: blur(16px) saturate(0.92);
+  opacity: 0.82;
+  transform: scale(1.04);
 }
 
 .page-shell__veil {
-  background:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.04), transparent 38%),
-    linear-gradient(180deg, rgba(5, 10, 14, 0.15), rgba(5, 10, 14, 0.35));
+  background: none;
 }
 
 .page-shell__grain {
-  opacity: 0.08;
+  opacity: 0.04;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
@@ -210,8 +220,8 @@ button {
 }
 
 .app-shell--mobile .page-shell__cover {
-  opacity: 0.4;
-  filter: blur(22px) saturate(0.8);
+  opacity: 0.78;
+  filter: blur(14px) saturate(0.88);
 }
 
 .app-shell--mobile .page-shell__content,

@@ -381,7 +381,8 @@ onBeforeUnmount(() => {
 
 .app-shell--mobile .audio-player__controls {
   display: flex;
-  justify-content: stretch;
+  justify-content: center;
+  width: 100%;
 }
 
 .app-shell--mobile .audio-player__primary {
@@ -389,6 +390,7 @@ onBeforeUnmount(() => {
   width: 84px;
   height: 84px;
   color: #0a1f18;
+  margin-inline: auto;
 }
 
 .app-shell--desktop .audio-player {
