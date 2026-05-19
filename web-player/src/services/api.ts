@@ -27,7 +27,7 @@ function resolveApiBaseUrl(): string {
   const configuredValue = import.meta.env.VITE_API_BASE_URL;
   const configured = typeof configuredValue === "string" ? configuredValue.trim() : "";
   if (!configured) {
-    throw new ConfigurationError("缺少 VITE_API_BASE_URL 配置，当前分支只支持 Cloudflare Pages + Worker API 部署。");
+    return `${window.location.origin}/`;
   }
 
   const normalizedUrl = configured.endsWith("/") ? configured : `${configured}/`;
