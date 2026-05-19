@@ -1,6 +1,11 @@
 package com.musicshare.android
+import android.Manifest
 
+import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -41,6 +46,10 @@ class MainActivity : ComponentActivity() {
         viewModel.uploadAdminBackground(uri)
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        ShareForegroundService.start(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -59,7 +68,7 @@ class MainActivity : ComponentActivity() {
                     uiState = uiState,
                     snackbarHostState = snackbarHostState,
                     onPickMusicTree = { openTreeLauncher.launch(null) },
-                    onShareNow = { ShareForegroundService.start(this) },
+                    onShareNow = { startShareWithNotificationPrompt() },
                     onAuthenticateUser = { vm.authenticate(preferAdmin = false) },
                     onAuthenticateAdmin = { vm.authenticate(preferAdmin = true) },
                     onRefreshShares = { vm.refreshShares() },
@@ -78,9 +87,52 @@ class MainActivity : ComponentActivity() {
                         importLauncher.launch(arrayOf("application/json", "text/plain"))
                     },
                     onSaveSettings = vm::saveSettings,
+                    onSaveUsageLimits = vm::saveAdminUsageLimits,
                     onClearSession = vm::clearSession,
                 )
             }
         }
+        handleShareIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    private fun handleShareIntent(intent: Intent?) {
+        if (intent?.action == actionStartShareWithPrompt) {
+            setIntent(Intent(this, MainActivity::class.java))
+            startShareWithNotificationPrompt()
+        }
+    }
+
+    private fun startShareWithNotificationPrompt() {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ShareForegroundService.start(this)
+        }
+    }
+
+    companion object {
+        private const val actionStartShareWithPrompt = "com.musicshare.android.action.START_SHARE_WITH_PROMPT"
+        private const val pendingSharePromptRequestCode = 2090
+
+        fun shareWithPromptIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java)
+                .setAction(actionStartShareWithPrompt)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        fun shareWithPromptPendingIntent(context: Context): PendingIntent = PendingIntent.getActivity(
+            context,
+            pendingSharePromptRequestCode,
+            shareWithPromptIntent(context),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 }

@@ -6,4 +6,11 @@
     <string name="notification_title_processing">正在分享当前歌曲</string>
     <string name="notification_title_ready">分享已完成</string>
     <string name="notification_title_failed">分享失败</string>
+    <string name="notification_action_share_again">重试分享</string>
+    <string name="widget_title">分享当前歌曲</string>
+    <string name="widget_action_share">分享</string>
+    <string name="widget_action_processing">处理中</string>
+    <string name="widget_status_processing">正在准备分享</string>
+    <string name="widget_status_waiting_track">等待 Poweramp 当前曲目</string>
+    <string name="widget_status_needs_setup">先打开 App 授权音乐目录</string>
 </resources>

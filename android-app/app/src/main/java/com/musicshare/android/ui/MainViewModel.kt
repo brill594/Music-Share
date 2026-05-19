@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.musicshare.android.MusicShareApplication
 import com.musicshare.android.network.AdminBackgroundDto
+import com.musicshare.android.network.AdminUsageDto
+import com.musicshare.android.network.AdminUsageUpdateRequest
 import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.network.ShareItemDto
 import com.musicshare.android.util.normalizeBaseUrl
@@ -23,6 +25,7 @@ data class DashboardUiState(
     val clientShares: List<ShareItemDto> = emptyList(),
     val adminShares: List<ShareItemDto> = emptyList(),
     val adminBackground: AdminBackgroundDto? = null,
+    val adminUsage: AdminUsageDto? = null,
     val isRefreshing: Boolean = false,
 )
 
@@ -31,7 +34,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val clientShares = MutableStateFlow<List<ShareItemDto>>(emptyList())
     private val adminShares = MutableStateFlow<List<ShareItemDto>>(emptyList())
     private val adminBackground = MutableStateFlow<AdminBackgroundDto?>(null)
+    private val adminUsage = MutableStateFlow<AdminUsageDto?>(null)
     private val isRefreshing = MutableStateFlow(false)
+    private val adminMetaState =
+        combine(
+            adminBackground,
+            adminUsage,
+            isRefreshing,
+        ) { background, usage, refreshing ->
+            Triple(background, usage, refreshing)
+        }
 
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val uiState: StateFlow<DashboardUiState> =
@@ -39,14 +51,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             container.stateStore.state,
             clientShares,
             adminShares,
-            adminBackground,
-            isRefreshing,
-        ) { appState, clientList, adminList, background, refreshing ->
+            adminMetaState,
+        ) { appState, clientList, adminList, adminMeta ->
+            val (background, usage, refreshing) = adminMeta
             DashboardUiState(
                 appState = appState,
                 clientShares = clientList,
                 adminShares = adminList,
                 adminBackground = background,
+                adminUsage = usage,
                 isRefreshing = refreshing,
             )
         }.stateIn(
@@ -77,6 +90,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 container.backendRepository.ensureSession(preferAdmin = preferAdmin)
             }.onSuccess { session ->
+                if (preferAdmin && session.role == "admin") {
+                    refreshShares()
+                }
                 messages.tryEmit("已获得 ${session.role.ifBlank { "用户" }} 会话。")
             }.onFailure { error ->
                 messages.tryEmit(error.message ?: "认证失败。")
@@ -91,11 +107,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val client = container.backendRepository.listClientShares()
                 val admin = runCatching { container.backendRepository.listAdminTracks() }.getOrDefault(emptyList())
                 val background = runCatching { container.backendRepository.getAdminBackground() }.getOrNull()
-                Triple(client, admin, background)
-            }.onSuccess { (client, admin, background) ->
+                val usage = runCatching { container.backendRepository.getAdminUsage() }.getOrNull()
+                Quadruple(client, admin, background, usage)
+            }.onSuccess { (client, admin, background, usage) ->
                 clientShares.value = client
                 adminShares.value = admin
                 adminBackground.value = background
+                adminUsage.value = usage
             }.onFailure { error ->
                 messages.tryEmit(error.message ?: "刷新分享失败。")
             }
@@ -232,6 +250,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveAdminUsageLimits(draft: UsageLimitsDraft) {
+        viewModelScope.launch {
+            val d1RowsReadDailyLimit = draft.d1RowsReadDailyLimit.toLongOrNull()
+            if (d1RowsReadDailyLimit == null || d1RowsReadDailyLimit <= 0L) {
+                messages.tryEmit("D1 每日读取上限必须是正整数。")
+                return@launch
+            }
+            val d1RowsWrittenDailyLimit = draft.d1RowsWrittenDailyLimit.toLongOrNull()
+            if (d1RowsWrittenDailyLimit == null || d1RowsWrittenDailyLimit <= 0L) {
+                messages.tryEmit("D1 每日写入上限必须是正整数。")
+                return@launch
+            }
+            val d1StorageGbLimit = draft.d1StorageGbLimit.toDoubleOrNull()
+            if (d1StorageGbLimit == null || d1StorageGbLimit <= 0.0) {
+                messages.tryEmit("D1 存储上限必须是正数。")
+                return@launch
+            }
+            val r2ClassARolling30dLimit = draft.r2ClassARolling30dLimit.toLongOrNull()
+            if (r2ClassARolling30dLimit == null || r2ClassARolling30dLimit <= 0L) {
+                messages.tryEmit("R2 Class A 近 30 天上限必须是正整数。")
+                return@launch
+            }
+            val r2ClassBRolling30dLimit = draft.r2ClassBRolling30dLimit.toLongOrNull()
+            if (r2ClassBRolling30dLimit == null || r2ClassBRolling30dLimit <= 0L) {
+                messages.tryEmit("R2 Class B 近 30 天上限必须是正整数。")
+                return@launch
+            }
+            val r2StorageGbMonthLimit = draft.r2StorageGbMonthLimit.toDoubleOrNull()
+            if (r2StorageGbMonthLimit == null || r2StorageGbMonthLimit <= 0.0) {
+                messages.tryEmit("R2 存储 GB-month 上限必须是正数。")
+                return@launch
+            }
+
+            runCatching {
+                container.backendRepository.updateAdminUsage(
+                    AdminUsageUpdateRequest(
+                        enabled = draft.enabled,
+                        d1RowsReadDailyLimit = d1RowsReadDailyLimit,
+                        d1RowsWrittenDailyLimit = d1RowsWrittenDailyLimit,
+                        d1StorageGbLimit = d1StorageGbLimit,
+                        r2ClassARolling30dLimit = r2ClassARolling30dLimit,
+                        r2ClassBRolling30dLimit = r2ClassBRolling30dLimit,
+                        r2StorageGbMonthLimit = r2StorageGbMonthLimit,
+                    ),
+                )
+            }.onSuccess { usage ->
+                adminUsage.value = usage
+                messages.tryEmit("远端用量上限已保存。")
+            }.onFailure { error ->
+                messages.tryEmit(error.message ?: "保存远端用量上限失败。")
+            }
+        }
+    }
+
     fun clearSession() {
         viewModelScope.launch {
             container.backendRepository.clearSession()
@@ -249,3 +321,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 }
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+)

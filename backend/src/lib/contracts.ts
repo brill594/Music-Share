@@ -6,7 +6,12 @@ export interface ShareRepository {
   getShareByCode(shareCode: string): Promise<ShareRecord | null>;
   listSharesByClient(clientInstallId: string): Promise<ShareRecord[]>;
   listAllShares(): Promise<ShareRecord[]>;
-  updateShareBackground(shareCode: string, backgroundMime: string | null, backgroundPath: string | null): Promise<void>;
+  updateShareBackground(
+    shareCode: string,
+    backgroundMime: string | null,
+    backgroundPath: string | null,
+    backgroundBytes: number | null,
+  ): Promise<void>;
   terminateShare(shareCode: string, terminatedAt: string): Promise<void>;
   listCleanupCandidates(nowIso: string): Promise<ShareRecord[]>;
   deleteShare(shareUuid: string): Promise<void>;
@@ -23,7 +28,7 @@ export interface StoredObject {
 }
 
 export interface ObjectStorage {
-  putObject(key: string, body: BodyInit, contentType: string): Promise<void>;
+  putObject(key: string, body: BodyInit, contentType: string, previousSizeHintBytes?: number | null): Promise<void>;
   getObject(key: string): Promise<StoredObject | null>;
-  deleteObject(key: string): Promise<void>;
+  deleteObject(key: string, sizeHintBytes?: number | null): Promise<void>;
 }

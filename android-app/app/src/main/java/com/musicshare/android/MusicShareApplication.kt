@@ -59,6 +59,20 @@ class AppContainer(private val application: Application) {
         registerPowerampReceiver()
         appScope.launch {
             stateStore.ensureClientInstallId()
+            stateStore.update { state ->
+                if (state.runtime.isProcessing) {
+                    state.copy(
+                        runtime = state.runtime.copy(
+                            isProcessing = false,
+                            currentStage = "",
+                            progressPercent = -1,
+                            lastError = "上次分享未完成。",
+                        ),
+                    )
+                } else {
+                    state
+                }
+            }
         }
     }
 

@@ -1,8 +1,21 @@
 export interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   first<T = Record<string, unknown>>(): Promise<T | null>;
-  all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;
-  run(): Promise<unknown>;
+  all<T = Record<string, unknown>>(): Promise<{
+    results: T[];
+    meta?: {
+      rows_read?: number;
+      rows_written?: number;
+      size_after?: number;
+    };
+  }>;
+  run(): Promise<{
+    meta?: {
+      rows_read?: number;
+      rows_written?: number;
+      size_after?: number;
+    };
+  } | unknown>;
 }
 
 export interface D1Database {

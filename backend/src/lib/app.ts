@@ -28,6 +28,15 @@ import {
   R2ObjectStorage,
 } from "./storage";
 import {
+  assertUsageAllowsPublicRead,
+  assertUsageAllowsUpload,
+  createUsageService,
+  parseUsageLimitUpdateInput,
+  RequestUsageAccumulator,
+  serializeUsageSummary,
+  type UsageRecorder,
+} from "./usage";
+import {
   requireShareAvailable,
   serializeGlobalBackground,
   serializeShareManagement,
@@ -49,19 +58,153 @@ interface AppContext {
   settings: AppSettings;
   repository: ShareRepository;
   storage: ObjectStorage;
+  usageService: ReturnType<typeof createUsageService>;
+  usageRecorder: RequestUsageAccumulator;
 }
 
 export interface AppDependencies {
   settings?: AppSettings;
   repository?: ShareRepository;
   storage?: ObjectStorage;
+  usageService?: ReturnType<typeof createUsageService>;
+}
+
+function buildBodySize(body: BodyInit): Promise<number> {
+  if (typeof body === "string") {
+    return Promise.resolve(new TextEncoder().encode(body).byteLength);
+  }
+  if (body instanceof ArrayBuffer) {
+    return Promise.resolve(body.byteLength);
+  }
+  return new Response(body).arrayBuffer().then((value) => value.byteLength);
+}
+
+class EstimatedUsageShareRepository implements ShareRepository {
+  constructor(
+    private readonly delegate: ShareRepository,
+    private readonly usageRecorder: UsageRecorder,
+  ) {}
+
+  async shareCodeExists(shareCode: string): Promise<boolean> {
+    const result = await this.delegate.shareCodeExists(shareCode);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsRead: 1 });
+    return result;
+  }
+
+  async insertShare(share: ShareRecord): Promise<void> {
+    await this.delegate.insertShare(share);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsWritten: 1 });
+  }
+
+  async getShareByCode(shareCode: string): Promise<ShareRecord | null> {
+    const result = await this.delegate.getShareByCode(shareCode);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsRead: 1 });
+    return result;
+  }
+
+  async listSharesByClient(clientInstallId: string): Promise<ShareRecord[]> {
+    const result = await this.delegate.listSharesByClient(clientInstallId);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsRead: Math.max(1, result.length) });
+    return result;
+  }
+
+  async listAllShares(): Promise<ShareRecord[]> {
+    const result = await this.delegate.listAllShares();
+    this.usageRecorder.recordEstimatedD1Usage({ rowsRead: Math.max(1, result.length) });
+    return result;
+  }
+
+  async updateShareBackground(
+    shareCode: string,
+    backgroundMime: string | null,
+    backgroundPath: string | null,
+    backgroundBytes: number | null,
+  ): Promise<void> {
+    await this.delegate.updateShareBackground(shareCode, backgroundMime, backgroundPath, backgroundBytes);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsWritten: 1 });
+  }
+
+  async terminateShare(shareCode: string, terminatedAt: string): Promise<void> {
+    await this.delegate.terminateShare(shareCode, terminatedAt);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsWritten: 1 });
+  }
+
+  async listCleanupCandidates(nowIso: string): Promise<ShareRecord[]> {
+    const result = await this.delegate.listCleanupCandidates(nowIso);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsRead: Math.max(1, result.length) });
+    return result;
+  }
+
+  async deleteShare(shareUuid: string): Promise<void> {
+    await this.delegate.deleteShare(shareUuid);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsWritten: 1 });
+  }
+
+  async upsertSession(session: SessionRecord): Promise<void> {
+    await this.delegate.upsertSession(session);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsWritten: 1 });
+  }
+
+  async getSession(sessionKeyHash: string): Promise<SessionRecord | null> {
+    const result = await this.delegate.getSession(sessionKeyHash);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsRead: 1 });
+    return result;
+  }
+
+  async deleteExpiredSessions(nowIso: string): Promise<void> {
+    await this.delegate.deleteExpiredSessions(nowIso);
+    this.usageRecorder.recordEstimatedD1Usage({ rowsWritten: 1 });
+  }
+}
+
+class InstrumentedObjectStorage implements ObjectStorage {
+  constructor(
+    private readonly delegate: ObjectStorage,
+    private readonly usageRecorder: UsageRecorder,
+  ) {}
+
+  async putObject(
+    key: string,
+    body: BodyInit,
+    contentType: string,
+    previousSizeHintBytes?: number | null,
+  ): Promise<void> {
+    const sizeBytes = await buildBodySize(body);
+    await this.delegate.putObject(key, body, contentType, previousSizeHintBytes);
+    this.usageRecorder.recordR2ClassA(
+      sizeBytes - (typeof previousSizeHintBytes === "number" && Number.isFinite(previousSizeHintBytes) ? previousSizeHintBytes : 0),
+    );
+  }
+
+  async getObject(key: string) {
+    const object = await this.delegate.getObject(key);
+    this.usageRecorder.recordR2ClassB();
+    return object;
+  }
+
+  async deleteObject(key: string, sizeHintBytes?: number | null): Promise<void> {
+    await this.delegate.deleteObject(key, sizeHintBytes);
+    if (typeof sizeHintBytes === "number" && Number.isFinite(sizeHintBytes)) {
+      this.usageRecorder.recordR2StorageDelta(-Math.max(0, Math.round(sizeHintBytes)));
+    }
+  }
 }
 
 function buildContext(env: Env, dependencies: AppDependencies = {}): AppContext {
+  const usageRecorder = new RequestUsageAccumulator();
+  const usageService = dependencies.usageService ?? createUsageService(env.MUSIC_SHARE_DB);
   return {
     settings: dependencies.settings ?? loadSettings(env),
-    repository: dependencies.repository ?? new D1ShareRepository(env.MUSIC_SHARE_DB),
-    storage: dependencies.storage ?? new R2ObjectStorage(env.MUSIC_SHARE_BUCKET),
+    repository:
+      dependencies.repository === undefined
+        ? new D1ShareRepository(env.MUSIC_SHARE_DB, usageRecorder)
+        : new EstimatedUsageShareRepository(dependencies.repository, usageRecorder),
+    storage:
+      dependencies.storage === undefined
+        ? new R2ObjectStorage(env.MUSIC_SHARE_BUCKET, usageRecorder)
+        : new InstrumentedObjectStorage(dependencies.storage, usageRecorder),
+    usageService,
+    usageRecorder,
   };
 }
 
@@ -139,6 +282,7 @@ async function handleLogin(request: Request, context: AppContext): Promise<Respo
 
 async function handleUpload(request: Request, context: AppContext): Promise<Response> {
   await getAuthenticatedSession(request, context, false);
+  assertUsageAllowsUpload(await context.usageService.getSummary());
   const clientInstallId = requireClientInstallId(request);
 
   let form: FormData;
@@ -197,7 +341,7 @@ async function handleUpload(request: Request, context: AppContext): Promise<Resp
     expiresAt,
   });
 
-  let persisted: ShareRecord;
+  let persisted: ShareRecord | null = null;
   try {
     persisted = await persistUploads({
       storage: context.storage,
@@ -209,7 +353,7 @@ async function handleUpload(request: Request, context: AppContext): Promise<Resp
     await context.repository.insertShare(persisted);
   } catch (error) {
     try {
-      await deleteShareAssets(context.storage, share);
+      await deleteShareAssets(context.storage, persisted ?? share);
     } catch {
       // Best effort cleanup when upload or insert fails.
     }
@@ -220,6 +364,7 @@ async function handleUpload(request: Request, context: AppContext): Promise<Resp
 }
 
 async function handleTrack(request: Request, context: AppContext, shareCode: string): Promise<Response> {
+  assertUsageAllowsPublicRead(await context.usageService.getSummary());
   const share = requireShareAvailable(await context.repository.getShareByCode(shareCode));
   const globalBackground = await readGlobalBackgroundConfig(context.storage);
   return jsonResponse(
@@ -230,11 +375,13 @@ async function handleTrack(request: Request, context: AppContext, shareCode: str
 }
 
 async function handleStream(context: AppContext, shareCode: string): Promise<Response> {
+  assertUsageAllowsPublicRead(await context.usageService.getSummary());
   const share = requireShareAvailable(await context.repository.getShareByCode(shareCode));
   return audioResponse(context.storage, share);
 }
 
 async function handleCover(context: AppContext, shareCode: string): Promise<Response> {
+  assertUsageAllowsPublicRead(await context.usageService.getSummary());
   const share = await getShareOr404(context.repository, shareCode);
   const status = effectiveStatus(share);
   if (status !== "active") {
@@ -244,6 +391,7 @@ async function handleCover(context: AppContext, shareCode: string): Promise<Resp
 }
 
 async function handleBackground(context: AppContext, shareCode: string): Promise<Response> {
+  assertUsageAllowsPublicRead(await context.usageService.getSummary());
   const share = await getShareOr404(context.repository, shareCode);
   const status = effectiveStatus(share);
   if (status !== "active") {
@@ -253,6 +401,7 @@ async function handleBackground(context: AppContext, shareCode: string): Promise
 }
 
 async function handleGlobalBackground(context: AppContext): Promise<Response> {
+  assertUsageAllowsPublicRead(await context.usageService.getSummary());
   return globalBackgroundResponse(context.storage);
 }
 
@@ -349,6 +498,7 @@ async function handleUploadAdminTrackBackground(
   shareCode: string,
 ): Promise<Response> {
   await getAuthenticatedSession(request, context, true);
+  assertUsageAllowsUpload(await context.usageService.getSummary());
 
   let form: FormData;
   try {
@@ -373,15 +523,20 @@ async function handleUploadAdminTrackBackground(
   });
 
   try {
-    await context.repository.updateShareBackground(shareCode, persisted.background_mime, persisted.background_path);
+    await context.repository.updateShareBackground(
+      shareCode,
+      persisted.background_mime,
+      persisted.background_path,
+      persisted.background_bytes,
+    );
   } catch (error) {
-    await context.storage.deleteObject(persisted.background_path);
+    await context.storage.deleteObject(persisted.background_path, persisted.background_bytes);
     throw error;
   }
 
   if (previousBackgroundPath && previousBackgroundPath !== persisted.background_path) {
     try {
-      await context.storage.deleteObject(previousBackgroundPath);
+      await context.storage.deleteObject(previousBackgroundPath, share.background_bytes);
     } catch {
       // Best effort cleanup for replaced backgrounds.
     }
@@ -404,6 +559,7 @@ async function handleGetAdminBackground(request: Request, context: AppContext): 
 
 async function handleUploadAdminBackground(request: Request, context: AppContext): Promise<Response> {
   await getAuthenticatedSession(request, context, true);
+  assertUsageAllowsUpload(await context.usageService.getSummary());
 
   let form: FormData;
   try {
@@ -422,17 +578,29 @@ async function handleUploadAdminBackground(request: Request, context: AppContext
     storage: context.storage,
     settings: context.settings,
     backgroundFile,
+    previous,
   });
 
   if (previous?.path && previous.path !== persisted.path) {
     try {
-      await context.storage.deleteObject(previous.path);
+      await context.storage.deleteObject(previous.path, previous.size);
     } catch {
       // Best effort cleanup for replaced global background.
     }
   }
 
   return jsonResponse(serializeGlobalBackground(context.settings, request, persisted));
+}
+
+async function handleGetAdminUsage(request: Request, context: AppContext): Promise<Response> {
+  await getAuthenticatedSession(request, context, true);
+  return jsonResponse(serializeUsageSummary(await context.usageService.getSummary()));
+}
+
+async function handleUpdateAdminUsage(request: Request, context: AppContext): Promise<Response> {
+  await getAuthenticatedSession(request, context, true);
+  const payload = parseUsageLimitUpdateInput(await parseJsonBody(request));
+  return jsonResponse(serializeUsageSummary(await context.usageService.updateLimits(payload)));
 }
 
 async function routeRequest(request: Request, context: AppContext): Promise<Response> {
@@ -484,8 +652,14 @@ async function routeRequest(request: Request, context: AppContext): Promise<Resp
   if (request.method === "GET" && url.pathname === "/admin/background") {
     return handleGetAdminBackground(request, context);
   }
+  if (request.method === "GET" && url.pathname === "/admin/usage") {
+    return handleGetAdminUsage(request, context);
+  }
   if (request.method === "POST" && url.pathname === "/admin/background") {
     return handleUploadAdminBackground(request, context);
+  }
+  if (request.method === "POST" && url.pathname === "/admin/usage") {
+    return handleUpdateAdminUsage(request, context);
   }
   if (
     request.method === "POST" &&
@@ -513,24 +687,41 @@ export async function handleRequest(
   env: Env,
   dependencies: AppDependencies = {},
 ): Promise<Response> {
+  let context: AppContext | null = null;
+  let response: Response;
   try {
-    return withCorsHeaders(request, await routeRequest(request, buildContext(env, dependencies)));
+    context = buildContext(env, dependencies);
+    response = await routeRequest(request, context);
   } catch (error) {
     if (isApiError(error)) {
-      return withCorsHeaders(request, errorResponse(error.status, error.detail));
+      response = errorResponse(error.status, error.detail);
+    } else {
+      console.error("Unhandled request error", error);
+      response = errorResponse(500, "Internal Server Error");
     }
-    console.error("Unhandled request error", error);
-    return withCorsHeaders(request, errorResponse(500, "Internal Server Error"));
   }
+
+  if (context !== null) {
+    try {
+      await context.usageService.applyRequestUsage(context.usageRecorder.snapshot());
+    } catch (error) {
+      console.error("Failed to persist usage metrics", error);
+    }
+  }
+  return withCorsHeaders(request, response);
 }
 
 export async function runCleanup(env: Env, dependencies: AppDependencies = {}): Promise<void> {
   const context = buildContext(env, dependencies);
-  const now = nowIso();
-  const shares = await context.repository.listCleanupCandidates(now);
-  for (const share of shares) {
-    await deleteShareAssets(context.storage, share);
-    await context.repository.deleteShare(share.uuid);
+  try {
+    const now = nowIso();
+    const shares = await context.repository.listCleanupCandidates(now);
+    for (const share of shares) {
+      await deleteShareAssets(context.storage, share);
+      await context.repository.deleteShare(share.uuid);
+    }
+    await context.repository.deleteExpiredSessions(now);
+  } finally {
+    await context.usageService.applyRequestUsage(context.usageRecorder.snapshot());
   }
-  await context.repository.deleteExpiredSessions(now);
 }

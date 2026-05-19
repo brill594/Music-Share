@@ -49,10 +49,12 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.network.AdminBackgroundDto
+import com.musicshare.android.network.AdminUsageDto
 import com.musicshare.android.network.ShareItemDto
 import com.musicshare.android.util.formatDisplayTime
 import com.musicshare.android.util.formatDurationLabel
 import com.musicshare.android.util.formatShareExpiryStatus
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +73,7 @@ fun MusicShareScreen(
     onImportConfigPreserveId: () -> Unit,
     onImportConfigReplaceId: () -> Unit,
     onSaveSettings: (SettingsDraft) -> Unit,
+    onSaveUsageLimits: (UsageLimitsDraft) -> Unit,
     onClearSession: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -118,10 +121,12 @@ fun MusicShareScreen(
                 )
                 else -> SettingsTab(
                     appState = uiState.appState,
+                    adminUsage = uiState.adminUsage,
                     onExportConfig = onExportConfig,
                     onImportConfigPreserveId = onImportConfigPreserveId,
                     onImportConfigReplaceId = onImportConfigReplaceId,
                     onSaveSettings = onSaveSettings,
+                    onSaveUsageLimits = onSaveUsageLimits,
                     onClearSession = onClearSession,
                 )
             }
@@ -295,10 +300,12 @@ private fun ShareManagementTab(
 @Composable
 private fun SettingsTab(
     appState: PersistedAppState,
+    adminUsage: AdminUsageDto?,
     onExportConfig: () -> Unit,
     onImportConfigPreserveId: () -> Unit,
     onImportConfigReplaceId: () -> Unit,
     onSaveSettings: (SettingsDraft) -> Unit,
+    onSaveUsageLimits: (UsageLimitsDraft) -> Unit,
     onClearSession: () -> Unit,
 ) {
     val sourceDraft = remember(
@@ -310,6 +317,10 @@ private fun SettingsTab(
         SettingsDraft.from(appState)
     }
     var draft by remember(sourceDraft) { mutableStateOf(sourceDraft) }
+    val usageSourceDraft = remember(adminUsage) {
+        adminUsage?.let { UsageLimitsDraft.from(it) }
+    }
+    var usageDraft by remember(usageSourceDraft) { mutableStateOf(usageSourceDraft) }
     val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
@@ -494,6 +505,161 @@ private fun SettingsTab(
             }
         }
 
+        if (adminUsage == null) {
+            HighlightCard(
+                title = "远端用量上限",
+                body = "先获取管理员会话并刷新一次，才会显示 Cloudflare D1/R2 用量统计和远端上限配置。",
+            )
+        } else {
+            HighlightCard(
+                title = "当前远端用量",
+                body = buildString {
+                    append("用于按 Cloudflare 免费额度相关指标做保护。")
+                    if (adminUsage.updatedAt != null) {
+                        append("\n上限更新：${formatDisplayTime(adminUsage.updatedAt)}")
+                    }
+                    if (adminUsage.generatedAt.isNotBlank()) {
+                        append("\n统计生成：${formatDisplayTime(adminUsage.generatedAt)}")
+                    }
+                    append("\n窗口：R2 采用近 ${adminUsage.cloudflareReference.rollingWindowDays} 天滚动估算。")
+                },
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    UsageMetricLine(
+                        label = "D1 每日读取行数",
+                        detail = "${formatCount(adminUsage.d1RowsReadDaily.used)} / ${formatCount(adminUsage.d1RowsReadDaily.limit)}",
+                        exceeded = adminUsage.d1RowsReadDaily.exceeded,
+                    )
+                    UsageMetricLine(
+                        label = "D1 每日写入行数",
+                        detail = "${formatCount(adminUsage.d1RowsWrittenDaily.used)} / ${formatCount(adminUsage.d1RowsWrittenDaily.limit)}",
+                        exceeded = adminUsage.d1RowsWrittenDaily.exceeded,
+                    )
+                    UsageMetricLine(
+                        label = "D1 总存储",
+                        detail = "${formatGb(adminUsage.d1Storage.usedGb)} GB / ${formatGb(adminUsage.d1Storage.limitGb)} GB",
+                        exceeded = adminUsage.d1Storage.exceeded,
+                    )
+                    UsageMetricLine(
+                        label = "R2 Class A（近 30 天）",
+                        detail = "${formatCount(adminUsage.r2ClassARolling30d.used)} / ${formatCount(adminUsage.r2ClassARolling30d.limit)}",
+                        exceeded = adminUsage.r2ClassARolling30d.exceeded,
+                    )
+                    UsageMetricLine(
+                        label = "R2 Class B（近 30 天）",
+                        detail = "${formatCount(adminUsage.r2ClassBRolling30d.used)} / ${formatCount(adminUsage.r2ClassBRolling30d.limit)}",
+                        exceeded = adminUsage.r2ClassBRolling30d.exceeded,
+                    )
+                    UsageMetricLine(
+                        label = "R2 存储（GB-month）",
+                        detail = "${formatGb(adminUsage.r2StorageRolling30d.usedGbMonth)} / ${formatGb(adminUsage.r2StorageRolling30d.limitGbMonth)} GB-month",
+                        exceeded = adminUsage.r2StorageRolling30d.exceeded,
+                    )
+                    Text(
+                        text = "当前 R2 实时占用：${formatBytes(adminUsage.r2StorageRolling30d.liveBytes)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            HighlightCard(
+                title = "远端上限配置",
+                body = if (usageDraft == usageSourceDraft) {
+                    "当前没有未保存修改。可直接填入 Cloudflare 免费额度，也可以按更低阈值提前阻断上传和公开读取。"
+                } else {
+                    "这里保存的是后端侧全局保护阈值，不是本地草稿。"
+                },
+            ) {
+                usageDraft?.let { currentDraft ->
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("启用远端保护")
+                            Switch(
+                                checked = currentDraft.enabled,
+                                onCheckedChange = { usageDraft = currentDraft.copy(enabled = it) },
+                            )
+                        }
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = currentDraft.d1RowsReadDailyLimit,
+                            onValueChange = { usageDraft = currentDraft.copy(d1RowsReadDailyLimit = it) },
+                            label = { Text("d1_rows_read_daily_limit") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = currentDraft.d1RowsWrittenDailyLimit,
+                            onValueChange = { usageDraft = currentDraft.copy(d1RowsWrittenDailyLimit = it) },
+                            label = { Text("d1_rows_written_daily_limit") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = currentDraft.d1StorageGbLimit,
+                            onValueChange = { usageDraft = currentDraft.copy(d1StorageGbLimit = it) },
+                            label = { Text("d1_storage_gb_limit") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = currentDraft.r2ClassARolling30dLimit,
+                            onValueChange = { usageDraft = currentDraft.copy(r2ClassARolling30dLimit = it) },
+                            label = { Text("r2_class_a_rolling_30d_limit") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = currentDraft.r2ClassBRolling30dLimit,
+                            onValueChange = { usageDraft = currentDraft.copy(r2ClassBRolling30dLimit = it) },
+                            label = { Text("r2_class_b_rolling_30d_limit") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = currentDraft.r2StorageGbMonthLimit,
+                            onValueChange = { usageDraft = currentDraft.copy(r2StorageGbMonthLimit = it) },
+                            label = { Text("r2_storage_gb_month_limit") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                onClick = { onSaveUsageLimits(currentDraft) },
+                                enabled = currentDraft != usageSourceDraft,
+                            ) {
+                                Text("保存远端上限")
+                            }
+                            TextButton(
+                                onClick = {
+                                    usageDraft = UsageLimitsDraft.fromReference(
+                                        adminUsage.cloudflareReference,
+                                        enabled = currentDraft.enabled,
+                                    )
+                                },
+                            ) {
+                                Text("填入免费额度")
+                            }
+                        }
+                        TextButton(
+                            onClick = { usageDraft = usageSourceDraft },
+                            enabled = currentDraft != usageSourceDraft,
+                        ) {
+                            Text("撤销远端修改")
+                        }
+                    }
+                }
+            }
+        }
+
         HighlightCard(
             title = "导出与导入",
             body = "导出的 JSON 默认包含密码、短期凭证和认证日志。保存前请确认文件位置可信。",
@@ -605,6 +771,26 @@ private fun PasswordField(
 }
 
 @Composable
+private fun UsageMetricLine(
+    label: String,
+    detail: String,
+    exceeded: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = if (exceeded) "$detail · 已达上限" else detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (exceeded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun HighlightCard(
     title: String,
     body: String,
@@ -630,4 +816,22 @@ private fun HighlightCard(
             content?.invoke()
         }
     }
+}
+
+private fun formatCount(value: Long): String = "%,d".format(value)
+
+private fun formatGb(value: Double): String {
+    val rounded = when {
+        abs(value) >= 100 -> "%.1f".format(value)
+        abs(value) >= 1 -> "%.2f".format(value)
+        else -> "%.4f".format(value)
+    }
+    return rounded.trimEnd('0').trimEnd('.')
+}
+
+private fun formatBytes(value: Long): String {
+    if (value < 1_000L) return "$value B"
+    if (value < 1_000_000L) return "${formatGb(value / 1_000.0)} KB"
+    if (value < 1_000_000_000L) return "${formatGb(value / 1_000_000.0)} MB"
+    return "${formatGb(value / 1_000_000_000.0)} GB"
 }

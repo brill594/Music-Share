@@ -35,6 +35,9 @@ class MusicShareBackendRepository(
         explicitNulls = false
     }
     private val httpClient = OkHttpClient.Builder().build()
+    private val uploadHttpClient = httpClient.newBuilder()
+        .retryOnConnectionFailure(false)
+        .build()
 
     suspend fun ensureSession(preferAdmin: Boolean = false): SessionSnapshot {
         val current = stateStore.read()
@@ -72,8 +75,11 @@ class MusicShareBackendRepository(
         return session
     }
 
-    suspend fun upload(preparedUpload: PreparedUpload): ShareItemDto =
-        withAuthorizedSession { state, session ->
+    suspend fun upload(
+        preparedUpload: PreparedUpload,
+        onProgress: (UploadProgress) -> Unit = {},
+    ): ShareItemDto =
+        withAuthorizedSession(retryOnSessionExpired = false) { state, session ->
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart(
@@ -100,8 +106,9 @@ class MusicShareBackendRepository(
                     .url(resolveBaseUrl(state).newBuilder().addPathSegment("upload").build())
                     .header("X-Client-Install-Id", state.clientInstallId)
                     .applySession(session)
-                    .post(body.build())
+                    .post(UploadProgressRequestBody(body.build(), onProgress = onProgress))
                     .build(),
+                client = uploadHttpClient,
             )
         }
 
@@ -203,6 +210,31 @@ class MusicShareBackendRepository(
             }
         }
 
+    suspend fun getAdminUsage(): AdminUsageDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("admin/usage").build())
+                    .applySession(session)
+                    .get()
+                    .build(),
+            )
+        }
+
+    suspend fun updateAdminUsage(request: AdminUsageUpdateRequest): AdminUsageDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("admin/usage").build())
+                    .applySession(session)
+                    .post(
+                        json.encodeToString(AdminUsageUpdateRequest.serializer(), request)
+                            .toRequestBody("application/json".toMediaType()),
+                    )
+                    .build(),
+            )
+        }
+
     suspend fun clearSession() {
         stateStore.update {
             it.copy(session = SessionSnapshot())
@@ -222,6 +254,7 @@ class MusicShareBackendRepository(
 
     private suspend fun <T> withAuthorizedSession(
         preferAdmin: Boolean = false,
+        retryOnSessionExpired: Boolean = true,
         block: suspend (PersistedAppState, SessionSnapshot) -> T,
     ): T {
         val initialState = stateStore.read()
@@ -233,14 +266,21 @@ class MusicShareBackendRepository(
         return try {
             block(stateStore.read(), initialSession)
         } catch (error: SessionExpiredException) {
+            if (!retryOnSessionExpired) {
+                clearSession()
+                throw UserVisibleException("登录状态已失效，请重新认证后重试。")
+            }
             clearSession()
             val refreshed = ensureSession(preferAdmin)
             block(stateStore.read(), refreshed)
         }
     }
 
-    private suspend inline fun <reified T> executeJson(request: Request): T = withContext(Dispatchers.IO) {
-        val response = runCatching { httpClient.newCall(request).execute() }.getOrElse { error ->
+    private suspend inline fun <reified T> executeJson(
+        request: Request,
+        client: OkHttpClient = httpClient,
+    ): T = withContext(Dispatchers.IO) {
+        val response = runCatching { client.newCall(request).execute() }.getOrElse { error ->
             throw mapCallError(error, request.url)
         }
         response.use { call ->

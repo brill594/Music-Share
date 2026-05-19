@@ -5,6 +5,7 @@ import type { ShareRepository, ObjectStorage, StoredObject } from "./lib/contrac
 import { effectiveStatus, type SessionRecord, type ShareRecord } from "./lib/models";
 import type { Env } from "./lib/config";
 import type { D1Database, R2Bucket } from "./lib/types";
+import { InMemoryUsageService } from "./lib/usage";
 
 class MemoryRepository implements ShareRepository {
   private readonly shares = new Map<string, ShareRecord>();
@@ -40,6 +41,7 @@ class MemoryRepository implements ShareRepository {
     shareCode: string,
     backgroundMime: string | null,
     backgroundPath: string | null,
+    backgroundBytes: number | null,
   ): Promise<void> {
     for (const [uuid, share] of this.shares.entries()) {
       if (share.share_code !== shareCode) {
@@ -49,6 +51,7 @@ class MemoryRepository implements ShareRepository {
         ...share,
         background_mime: backgroundMime,
         background_path: backgroundPath,
+        background_bytes: backgroundBytes,
       });
       return;
     }
@@ -113,7 +116,12 @@ class MemoryStorage implements ObjectStorage {
     }
   >();
 
-  async putObject(key: string, body: BodyInit, contentType: string): Promise<void> {
+  async putObject(
+    key: string,
+    body: BodyInit,
+    contentType: string,
+    _previousSizeHintBytes?: number | null,
+  ): Promise<void> {
     this.objects.set(key, {
       body: await toBytes(body),
       contentType,
@@ -133,7 +141,7 @@ class MemoryStorage implements ObjectStorage {
     };
   }
 
-  async deleteObject(key: string): Promise<void> {
+  async deleteObject(key: string, _sizeHintBytes?: number | null): Promise<void> {
     this.objects.delete(key);
   }
 
@@ -174,6 +182,7 @@ function createHarness(overrides: Partial<Env> = {}) {
   const env = createEnv(overrides);
   const repository = new MemoryRepository();
   const storage = new MemoryStorage();
+  const usageService = new InMemoryUsageService();
 
   async function request(input: {
     path: string;
@@ -191,6 +200,7 @@ function createHarness(overrides: Partial<Env> = {}) {
       {
         repository,
         storage,
+        usageService,
       },
     );
   }
@@ -199,6 +209,7 @@ function createHarness(overrides: Partial<Env> = {}) {
     env,
     repository,
     storage,
+    usageService,
     request,
   };
 }
@@ -513,10 +524,13 @@ describe("Cloudflare Worker backend compatibility", () => {
       duration_ms: 1000,
       audio_mime: "audio/ogg",
       audio_path: "shares/share-1/audio.ogg",
+      audio_bytes: 4,
       cover_mime: null,
       cover_path: null,
+      cover_bytes: null,
       background_mime: null,
       background_path: null,
+      background_bytes: null,
       created_at: "2026-04-05T00:00:00.000Z",
       client_created_at: null,
       expires_at: "2026-04-05T00:01:00.000Z",
@@ -535,5 +549,108 @@ describe("Cloudflare Worker backend compatibility", () => {
         "2026-04-05T00:00:30.000Z",
       ),
     ).toBe("terminated");
+  });
+
+  it("reports usage statistics and allows updating admin limits", async () => {
+    const harness = createHarness();
+    const { sessionKey: userSession } = await login(harness, "user-password");
+    await uploadSample(harness, userSession);
+    const { sessionKey: adminSession } = await login(harness, "admin-password");
+
+    const usageResponse = await harness.request({
+      path: "/admin/usage",
+      headers: {
+        "X-Session-Key": adminSession,
+      },
+    });
+    expect(usageResponse.status).toBe(200);
+    const usagePayload = (await usageResponse.json()) as {
+      enabled: boolean;
+      d1_rows_read_daily?: { used?: number; limit?: number };
+      r2_class_a_rolling_30d?: { used?: number; limit?: number };
+      r2_storage_rolling_30d?: { live_bytes?: number };
+      cloudflare_reference?: { d1_rows_read_daily_limit?: number };
+    };
+    expect(usagePayload.enabled).toBe(true);
+    expect(usagePayload.d1_rows_read_daily?.used).toBeGreaterThan(0);
+    expect(usagePayload.r2_class_a_rolling_30d?.used).toBeGreaterThan(0);
+    expect(usagePayload.r2_storage_rolling_30d?.live_bytes).toBeGreaterThan(0);
+    expect(usagePayload.cloudflare_reference?.d1_rows_read_daily_limit).toBe(5_000_000);
+
+    const updateResponse = await harness.request({
+      path: "/admin/usage",
+      method: "POST",
+      headers: {
+        "X-Session-Key": adminSession,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        enabled: false,
+        d1_rows_read_daily_limit: 12,
+        d1_rows_written_daily_limit: 8,
+        d1_storage_gb_limit: 1.5,
+        r2_class_a_rolling_30d_limit: 20,
+        r2_class_b_rolling_30d_limit: 40,
+        r2_storage_gb_month_limit: 2.5,
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+    const updatedPayload = (await updateResponse.json()) as {
+      enabled: boolean;
+      d1_rows_read_daily?: { limit?: number };
+      d1_storage?: { limit_gb?: number };
+      r2_storage_rolling_30d?: { limit_gb_month?: number };
+    };
+    expect(updatedPayload.enabled).toBe(false);
+    expect(updatedPayload.d1_rows_read_daily?.limit).toBe(12);
+    expect(updatedPayload.d1_storage?.limit_gb).toBe(1.5);
+    expect(updatedPayload.r2_storage_rolling_30d?.limit_gb_month).toBe(2.5);
+  });
+
+  it("blocks uploads when configured usage limits are reached", async () => {
+    const harness = createHarness();
+    const { sessionKey: adminSession } = await login(harness, "admin-password");
+
+    const updateResponse = await harness.request({
+      path: "/admin/usage",
+      method: "POST",
+      headers: {
+        "X-Session-Key": adminSession,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        enabled: true,
+        d1_rows_read_daily_limit: 1,
+        d1_rows_written_daily_limit: 1,
+        d1_storage_gb_limit: 5,
+        r2_class_a_rolling_30d_limit: 1,
+        r2_class_b_rolling_30d_limit: 10,
+        r2_storage_gb_month_limit: 10,
+      }),
+    });
+    expect(updateResponse.status).toBe(200);
+
+    const { sessionKey: userSession } = await login(harness, "user-password");
+    const form = new FormData();
+    form.set("title", "Blocked Track");
+    form.set("artist", "Test Artist");
+    form.set("album", "Test Album");
+    form.set("duration_ms", "123000");
+    form.set("audio_mime", "audio/ogg");
+    form.set("expire_after_seconds", "120");
+    form.set("file", new File([new Uint8Array([1, 2, 3])], "track.ogg", { type: "audio/ogg" }));
+
+    const response = await harness.request({
+      path: "/upload",
+      method: "POST",
+      headers: {
+        "X-Session-Key": userSession,
+        "X-Client-Install-Id": "install-guard",
+      },
+      body: form,
+    });
+    expect(response.status).toBe(429);
+    const payload = (await response.json()) as { detail?: string };
+    expect(payload.detail).toContain("limit reached");
   });
 });

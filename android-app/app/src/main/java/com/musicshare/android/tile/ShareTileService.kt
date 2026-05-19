@@ -3,8 +3,8 @@ package com.musicshare.android.tile
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import com.musicshare.android.MainActivity
 import com.musicshare.android.MusicShareApplication
-import com.musicshare.android.service.ShareForegroundService
 import kotlinx.coroutines.runBlocking
 
 class ShareTileService : TileService() {
@@ -15,15 +15,24 @@ class ShareTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        ShareForegroundService.start(this)
-        refreshTile(forceProcessing = true)
+        launchSharePrompt()
+        refreshTile()
     }
 
-    private fun refreshTile(forceProcessing: Boolean = false) {
+    private fun launchSharePrompt() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startActivityAndCollapse(MainActivity.shareWithPromptPendingIntent(this))
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(MainActivity.shareWithPromptIntent(this))
+        }
+    }
+
+    private fun refreshTile() {
         val tile = qsTile ?: return
         val stateStore = (application as MusicShareApplication).container.stateStore
         val appState = runBlocking { stateStore.read() }
-        val processing = forceProcessing || appState.runtime.isProcessing
+        val processing = appState.runtime.isProcessing
         when {
             processing -> {
                 tile.state = Tile.STATE_ACTIVE

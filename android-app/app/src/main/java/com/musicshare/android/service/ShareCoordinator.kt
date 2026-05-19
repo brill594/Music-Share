@@ -50,10 +50,18 @@ class ShareCoordinator(
             preparedUpload = prepareUpload(track)
             updateRuntime(
                 processing = true,
-                stage = if (preparedUpload.isFromPreparedCache) "复用缓存音频后上传" else "上传到后端",
-                progressPercent = if (preparedUpload.isFromPreparedCache) 100 else -1,
+                stage = "上传到后端",
+                progressPercent = 0,
             )
-            val uploaded = backendRepository.upload(preparedUpload)
+            val uploaded = backendRepository.upload(preparedUpload) { progress ->
+                if (progress.percent >= 0) {
+                    updateRuntimeBlocking(
+                        processing = true,
+                        stage = if (progress.percent >= 100) "等待后端生成分享链接" else "上传到后端",
+                        progressPercent = progress.percent,
+                    )
+                }
+            }
             uploadSucceeded = true
             copyToClipboard(uploaded.shareUrl)
             updateRuntime(
@@ -67,7 +75,7 @@ class ShareCoordinator(
         } catch (error: Throwable) {
             val finalMessage = buildFailureMessage(
                 originalMessage = error.message ?: "分享失败。",
-                hasReusablePreparedUpload = preparedUpload != null && !uploadSucceeded,
+                hasReusablePreparedUpload = preparedUpload?.isRetryCacheReady == true && !uploadSucceeded,
             )
             updateRuntime(
                 processing = false,
@@ -306,12 +314,14 @@ class ShareCoordinator(
         stage: String,
         progressPercent: Int,
     ) {
-        kotlinx.coroutines.runBlocking {
-            updateRuntime(
-                processing = processing,
-                stage = stage,
-                progressPercent = progressPercent,
-            )
+        runCatching {
+            kotlinx.coroutines.runBlocking {
+                updateRuntime(
+                    processing = processing,
+                    stage = stage,
+                    progressPercent = progressPercent,
+                )
+            }
         }
     }
 
@@ -322,10 +332,10 @@ class ShareCoordinator(
         if (!hasReusablePreparedUpload) {
             return originalMessage
         }
-        if (originalMessage.contains("可直接重试")) {
+        if (originalMessage.contains("跳过转码")) {
             return originalMessage
         }
-        return "$originalMessage 已保留最近一次准备好的音频，可直接重试。"
+        return "$originalMessage 已保留最近一次准备好的音频，重试时会跳过转码并重新上传；如果刚才网络在完成后中断，请先刷新分享列表确认是否已生成链接。"
     }
 
     private suspend fun copyToClipboard(url: String) = withContext(Dispatchers.Main) {

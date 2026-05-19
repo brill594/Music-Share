@@ -5,6 +5,7 @@ import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.data.TranscodeConfig
 import com.musicshare.android.network.PreparedUpload
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -19,12 +20,15 @@ class PreparedUploadCache(
     }
     private val cacheRoot = File(context.cacheDir, cacheDirectoryName)
     private val metadataFile = File(cacheRoot, metadataFileName)
+    private val stagingRoot = File(context.cacheDir, stagingDirectoryName)
+    private val backupRoot = File(context.cacheDir, backupDirectoryName)
 
     fun load(
         track: CurrentTrackSnapshot,
         transcodeConfig: TranscodeConfig,
         expireAfterSeconds: Long,
     ): PreparedUpload? {
+        recoverBackupIfNeeded()
         val metadata = readMetadata() ?: return null
         if (metadata.cacheKey != buildCacheKey(track, transcodeConfig)) {
             return null
@@ -48,7 +52,7 @@ class PreparedUploadCache(
             durationMs = metadata.durationMs,
             clientCreatedAt = metadata.clientCreatedAt,
             expireAfterSeconds = expireAfterSeconds,
-            isFromPreparedCache = true,
+            isRetryCacheReady = true,
         )
     }
 
@@ -57,11 +61,11 @@ class PreparedUploadCache(
         transcodeConfig: TranscodeConfig,
         preparedUpload: PreparedUpload,
     ): PreparedUpload {
-        clear()
-        cacheRoot.mkdirs()
+        stagingRoot.deleteRecursively()
+        stagingRoot.mkdirs()
         return runCatching {
-            val cachedAudio = copyIntoCache(preparedUpload.audioFile, audioBaseName)
-            val cachedCover = preparedUpload.coverFile?.let { copyIntoCache(it, coverBaseName) }
+            val cachedAudio = copyIntoCache(preparedUpload.audioFile, stagingRoot, audioBaseName)
+            val cachedCover = preparedUpload.coverFile?.let { copyIntoCache(it, stagingRoot, coverBaseName) }
             val metadata = CachedPreparedUpload(
                 cacheKey = buildCacheKey(track, transcodeConfig),
                 audioFileName = cachedAudio.name,
@@ -74,24 +78,30 @@ class PreparedUploadCache(
                 durationMs = preparedUpload.durationMs,
                 clientCreatedAt = preparedUpload.clientCreatedAt,
             )
-            metadataFile.writeText(
+            File(stagingRoot, metadataFileName).writeText(
                 json.encodeToString(CachedPreparedUpload.serializer(), metadata),
                 Charsets.UTF_8,
             )
+            swapStagingIntoCache()
+            val cachedUploadAudio = File(cacheRoot, cachedAudio.name)
+            val cachedUploadCover = cachedCover?.let { File(cacheRoot, it.name) }
             preparedUpload.audioFile.delete()
             preparedUpload.coverFile?.delete()
             preparedUpload.copy(
-                audioFile = cachedAudio,
-                coverFile = cachedCover,
+                audioFile = cachedUploadAudio,
+                coverFile = cachedUploadCover,
+                isRetryCacheReady = true,
             )
         }.getOrElse { error ->
-            clear()
+            stagingRoot.deleteRecursively()
             throw error
         }
     }
 
     fun clear() {
         cacheRoot.deleteRecursively()
+        stagingRoot.deleteRecursively()
+        backupRoot.deleteRecursively()
     }
 
     private fun readMetadata(): CachedPreparedUpload? {
@@ -106,9 +116,32 @@ class PreparedUploadCache(
         }
     }
 
-    private fun copyIntoCache(source: File, baseName: String): File {
+    private fun recoverBackupIfNeeded() {
+        if (!cacheRoot.exists() && backupRoot.exists()) {
+            backupRoot.renameTo(cacheRoot)
+        } else if (cacheRoot.exists()) {
+            backupRoot.deleteRecursively()
+        }
+    }
+
+    private fun swapStagingIntoCache() {
+        backupRoot.deleteRecursively()
+        val hadPreviousCache = cacheRoot.exists()
+        if (hadPreviousCache && !cacheRoot.renameTo(backupRoot)) {
+            throw IOException("无法保留上一次准备好的音频缓存。")
+        }
+        if (!stagingRoot.renameTo(cacheRoot)) {
+            if (hadPreviousCache && backupRoot.exists() && !backupRoot.renameTo(cacheRoot)) {
+                throw IOException("无法恢复上一次准备好的音频缓存。")
+            }
+            throw IOException("无法保存本次准备好的音频缓存。")
+        }
+        backupRoot.deleteRecursively()
+    }
+
+    private fun copyIntoCache(source: File, root: File, baseName: String): File {
         val extension = source.extension.takeIf { it.isNotBlank() }?.let { ".$it" }.orEmpty()
-        val target = File(cacheRoot, "$baseName$extension")
+        val target = File(root, "$baseName$extension")
         source.copyTo(target, overwrite = true)
         return target
     }
@@ -119,6 +152,7 @@ class PreparedUploadCache(
     ): String {
         val raw = listOf(
             track.powerampPath,
+            track.documentUri,
             track.trackId,
             track.durationMs.toString(),
             transcodeConfig.outputFormat,
@@ -150,6 +184,8 @@ class PreparedUploadCache(
 
     private companion object {
         const val cacheDirectoryName = "prepared-upload-cache"
+        const val stagingDirectoryName = "prepared-upload-cache-staging"
+        const val backupDirectoryName = "prepared-upload-cache-backup"
         const val metadataFileName = "metadata.json"
         const val audioBaseName = "audio"
         const val coverBaseName = "cover"

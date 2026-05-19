@@ -20,10 +20,13 @@ export interface ShareRecord {
   duration_ms: number;
   audio_mime: string;
   audio_path: string;
+  audio_bytes: number;
   cover_mime: string | null;
   cover_path: string | null;
+  cover_bytes: number | null;
   background_mime: string | null;
   background_path: string | null;
+  background_bytes: number | null;
   created_at: string;
   client_created_at: string | null;
   expires_at: string;

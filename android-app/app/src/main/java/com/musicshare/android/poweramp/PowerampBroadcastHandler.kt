@@ -7,7 +7,9 @@ import android.util.Log
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.util.DocumentUriResolver
+import com.musicshare.android.tile.TileStateBridge
 import com.musicshare.android.util.nowIso
+import com.musicshare.android.widget.ShareWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -38,6 +40,8 @@ class PowerampBroadcastHandler(
                     stateStore.update { state ->
                         state.copy(latestTrack = parsed)
                     }
+                    TileStateBridge.requestRefresh(context)
+                    ShareWidgetProvider.requestRefresh(context)
                 } else {
                     Log.d(logTag, "Ignored action=${intent.action} because no usable snapshot was produced")
                 }
