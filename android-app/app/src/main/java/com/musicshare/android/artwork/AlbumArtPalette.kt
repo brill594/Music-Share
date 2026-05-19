@@ -22,25 +22,25 @@ data class AlbumArtTokens(
 
 fun deriveAlbumArtTokens(seedArgb: Long, darkTheme: Boolean): AlbumArtTokens {
     val seed = opaque(seedArgb)
-    val primary = if (darkTheme) blend(seed, white, 0.35f) else blend(seed, black, 0.18f)
-    val primaryContainer = if (darkTheme) blend(seed, black, 0.35f) else blend(seed, white, 0.70f)
-    val secondary = if (darkTheme) blend(seed, white, 0.18f) else blend(seed, black, 0.06f)
-    val surface = if (darkTheme) blend(seed, black, 0.78f) else blend(seed, white, 0.82f)
-    val surfaceVariant = if (darkTheme) blend(seed, black, 0.66f) else blend(seed, white, 0.66f)
-    val background = if (darkTheme) blend(seed, black, 0.86f) else blend(seed, white, 0.88f)
+    val primary = blend(seed, white, if (darkTheme) 0.52f else 0.48f)
+    val primaryContainer = blend(seed, black, if (darkTheme) 0.78f else 0.72f)
+    val secondary = blend(seed, white, if (darkTheme) 0.38f else 0.32f)
+    val surface = blend(seed, black, if (darkTheme) 0.88f else 0.82f)
+    val surfaceVariant = blend(seed, black, if (darkTheme) 0.80f else 0.74f)
+    val background = blend(seed, black, if (darkTheme) 0.92f else 0.86f)
     return AlbumArtTokens(
         primaryArgb = primary,
         onPrimaryArgb = readableTextOn(primary),
         primaryContainerArgb = primaryContainer,
-        onPrimaryContainerArgb = readableTextOn(primaryContainer),
+        onPrimaryContainerArgb = white,
         secondaryArgb = secondary,
         onSecondaryArgb = readableTextOn(secondary),
         surfaceArgb = surface,
-        onSurfaceArgb = readableTextOn(surface),
+        onSurfaceArgb = white,
         surfaceVariantArgb = surfaceVariant,
-        onSurfaceVariantArgb = readableTextOn(surfaceVariant),
+        onSurfaceVariantArgb = white,
         backgroundArgb = background,
-        onBackgroundArgb = readableTextOn(background),
+        onBackgroundArgb = white,
     )
 }
 
@@ -93,6 +93,7 @@ private fun blend(from: Long, to: Long, toAmount: Float): Long {
     )
 }
 
+
 private fun readableTextOn(background: Long): Long =
     if (contrastRatio(background, black) >= contrastRatio(background, white)) black else white
 
@@ -110,9 +111,10 @@ private fun relativeLuminance(argb: Long): Float {
 }
 
 private fun linearized(channel: Float): Float =
-    if (channel <= 0.03928f) channel / 12.92f else ((channel + 0.055f) / 1.055f).pow(2.4f)
-
-private fun Float.pow(exponent: Float): Float = Math.pow(toDouble(), exponent.toDouble()).toFloat()
+    if (channel <= 0.03928f) channel / 12.92f else Math.pow(
+        ((channel + 0.055f) / 1.055f).toDouble(),
+        2.4,
+    ).toFloat()
 
 private fun shifted(argb: Long, shift: Int): Int = ((argb ushr shift) and 0xffL).toInt()
 

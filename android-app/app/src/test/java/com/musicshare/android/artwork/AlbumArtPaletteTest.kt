@@ -2,6 +2,7 @@ package com.musicshare.android.artwork
 
 import androidx.compose.ui.graphics.toArgb
 import com.musicshare.android.ui.argbLongToColor
+import com.musicshare.android.ui.defaultMusicShareColorScheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -48,6 +49,38 @@ class AlbumArtPaletteTest {
                 assertTrue(contrastRatio(tokens.backgroundArgb, tokens.onBackgroundArgb) >= 4.5)
             }
         }
+    }
+
+    @Test
+    fun appSurfaceTextStaysWhiteWhileButtonColorsFollowArtwork() {
+        listOf(false, true).forEach { darkTheme ->
+            val tokens = deriveAlbumArtTokens(0xff3366ccL, darkTheme)
+
+            assertEquals(0xffffffff.toInt(), tokens.onSurfaceArgb.toInt())
+            assertEquals(0xffffffff.toInt(), tokens.onSurfaceVariantArgb.toInt())
+            assertEquals(0xffffffff.toInt(), tokens.onBackgroundArgb.toInt())
+            assertTrue(blue(tokens.primaryArgb) > red(tokens.primaryArgb))
+        }
+    }
+
+    @Test
+    fun artworkPrimaryRemainsReadableOnAppBackground() {
+        listOf(0xff000000L, 0xffff8800L, 0xff3366ccL, 0xff777777L).forEach { seed ->
+            listOf(false, true).forEach { darkTheme ->
+                val tokens = deriveAlbumArtTokens(seed, darkTheme)
+
+                assertTrue(contrastRatio(tokens.backgroundArgb, tokens.primaryArgb) >= 4.5)
+            }
+        }
+    }
+
+    @Test
+    fun defaultLightThemeTextRolesAreReadableOnDarkBackground() {
+        val colors = defaultMusicShareColorScheme(darkTheme = false)
+
+        assertTrue(contrastRatio(colors.background.toArgb().toLong(), colors.primary.toArgb().toLong()) >= 4.5)
+        assertTrue(contrastRatio(colors.background.toArgb().toLong(), colors.error.toArgb().toLong()) >= 4.5)
+        assertTrue(contrastRatio(colors.secondary.toArgb().toLong(), colors.onSecondary.toArgb().toLong()) >= 4.5)
     }
 
     private fun red(argb: Long): Int = ((argb ushr 16) and 0xff).toInt()

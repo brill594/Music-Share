@@ -10,7 +10,6 @@ import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.util.DocumentUriResolver
 import com.musicshare.android.tile.TileStateBridge
 import com.musicshare.android.util.nowIso
-import com.musicshare.android.widget.ShareWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -149,7 +148,6 @@ class PowerampBroadcastHandler(
 
     private fun requestGlanceRefresh() {
         TileStateBridge.requestRefresh(context)
-        ShareWidgetProvider.requestRefresh(context)
     }
 
     private suspend fun attachAlbumArtwork(snapshot: CurrentTrackSnapshot): CurrentTrackSnapshot {

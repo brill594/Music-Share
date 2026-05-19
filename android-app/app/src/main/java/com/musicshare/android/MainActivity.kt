@@ -13,12 +13,14 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.musicshare.android.service.ShareForegroundService
 import com.musicshare.android.ui.MainViewModel
 import com.musicshare.android.ui.MusicShareScreen
 import com.musicshare.android.ui.MusicShareTheme
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel> { MainViewModel.factory(application) }
@@ -44,10 +46,7 @@ class MainActivity : ComponentActivity() {
         viewModel.uploadAdminBackground(uri)
     }
 
-    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            ShareForegroundService.showShortcutNotification(this)
-        }
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         ShareForegroundService.start(this)
     }
 
@@ -95,17 +94,28 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        if (canPostNotifications()) {
-            ShareForegroundService.showShortcutNotification(this)
-        }
+        showCurrentShareNotification()
     }
 
     private fun startShareWithNotificationPrompt() {
         if (!canPostNotifications()) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            ShareForegroundService.showShortcutNotification(this)
             ShareForegroundService.start(this)
+        }
+    }
+
+    private fun showCurrentShareNotification() {
+        if (!canPostNotifications()) return
+        lifecycleScope.launch {
+            val runtime = (application as MusicShareApplication).container.stateStore.read().runtime
+            when {
+                runtime.isProcessing -> return@launch
+                runtime.lastError.isNotBlank() || runtime.lastShareUrl.isNotBlank() -> {
+                    ShareForegroundService.showResultNotification(this@MainActivity, runtime)
+                }
+                else -> ShareForegroundService.showShortcutNotification(this@MainActivity)
+            }
         }
     }
     private fun canPostNotifications(): Boolean =

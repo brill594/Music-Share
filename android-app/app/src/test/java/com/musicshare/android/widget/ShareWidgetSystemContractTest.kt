@@ -7,48 +7,63 @@ import org.junit.Test
 
 class ShareWidgetSystemContractTest {
     @Test
-    fun widgetUsesPowerampLikeTranslucentGrayPalette() {
-        val widgetBackground = File("src/main/res/drawable/bg_share_widget.xml").readText()
-        val actionBackground = File("src/main/res/drawable/bg_share_widget_action.xml").readText()
-        val layout = File("src/main/res/layout/share_widget.xml").readText()
+    fun homeScreenWidgetIsRemoved() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val service = File("src/main/java/com/musicshare/android/service/ShareForegroundService.kt").readText()
+        val handler = File("src/main/java/com/musicshare/android/poweramp/PowerampBroadcastHandler.kt").readText()
 
-        assertTrue(widgetBackground.contains("#A9323232"))
-        assertTrue(actionBackground.contains("#CC4A4A4A"))
-        assertTrue(layout.contains("android:textColor=\"#FFFFFFFF\""))
-        assertTrue(layout.contains("android:shadowColor=\"#99000000\""))
+        assertFalse(File("src/main/java/com/musicshare/android/widget/ShareWidgetProvider.kt").exists())
+        assertFalse(File("src/main/res/layout/share_widget.xml").exists())
+        assertFalse(File("src/main/res/xml/share_widget_info.xml").exists())
+        assertFalse(File("src/main/res/drawable/bg_share_widget.xml").exists())
+        assertFalse(File("src/main/res/drawable/bg_share_widget_action.xml").exists())
+        assertFalse(manifest.contains("ShareWidgetProvider"))
+        assertFalse(manifest.contains("APPWIDGET_UPDATE"))
+        assertFalse(service.contains("ShareWidgetProvider"))
+        assertFalse(handler.contains("ShareWidgetProvider"))
     }
 
     @Test
-    fun widgetAndTileShareWithoutOpeningTheApp() {
-        val widgetProvider = File("src/main/java/com/musicshare/android/widget/ShareWidgetProvider.kt").readText()
-        val tileService = File("src/main/java/com/musicshare/android/tile/ShareTileService.kt").readText()
-
-        assertTrue(widgetProvider.contains("ShareForegroundService.sharePendingIntent"))
-        assertTrue(tileService.contains("ShareForegroundService.start(this)"))
-        assertFalse(widgetProvider.contains("MainActivity.shareWithPrompt"))
-        assertFalse(tileService.contains("startActivityAndCollapse"))
-    }
-
-    @Test
-    fun foregroundServiceShowsRuntimeProgressOnlyAfterShareStarts() {
+    fun foregroundServiceUpdatesNotificationWithCompletionResult() {
         val service = File("src/main/java/com/musicshare/android/service/ShareForegroundService.kt").readText()
 
-        assertTrue(service.contains("buildProgressNotification"))
-        assertTrue(service.contains("notification_title_processing"))
-        assertTrue(service.contains("setProgress"))
-        assertTrue(service.contains("showProgressNotification"))
-        assertTrue(service.contains("startForeground(notificationId, buildProgressNotification"))
-        assertTrue(service.contains("showShortcutNotification(this@ShareForegroundService)"))
-        assertFalse(service.contains("notifyCompletion"))
+        assertTrue(service.contains("showResultNotification"))
+        assertTrue(service.contains("buildResultNotification"))
+        assertTrue(service.contains("notification_title_ready"))
+        assertTrue(service.contains("notification_title_failed"))
+        assertFalse(service.contains("showShortcutNotification(this@ShareForegroundService)"))
+        assertTrue(service.contains("hasActiveShareNotification"))
+        assertTrue(service.contains("activeNotifications"))
+        assertFalse(service.contains("refreshWidgetIfDue"))
+        assertTrue(service.contains("val resultPosted = showResultNotification"))
+        assertTrue(service.contains("STOP_FOREGROUND_REMOVE"))
     }
 
     @Test
-    fun widgetDoesNotShowCurrentTrackText() {
-        val widgetProvider = File("src/main/java/com/musicshare/android/widget/ShareWidgetProvider.kt").readText()
+    fun activityDoesNotOverwriteActiveOrResultNotificationWithShortcut() {
+        val activity = File("src/main/java/com/musicshare/android/MainActivity.kt").readText()
 
-        assertFalse(widgetProvider.contains("track.displayTitle()"))
-        assertFalse(widgetProvider.contains("latestTrack.displayTitle"))
-        assertTrue(widgetProvider.contains("widget_status_ready"))
+        assertTrue(activity.contains("showCurrentShareNotification"))
+        assertTrue(activity.contains("runtime.isProcessing"))
+        assertTrue(activity.contains("ShareForegroundService.showResultNotification"))
+        assertFalse(activity.contains("ShareForegroundService.showShortcutNotification(this)"))
+    }
+
+    @Test
+    fun launcherIconUsesGrayPalette() {
+        val background = File("src/main/res/values/ic_launcher_background.xml").readText()
+        val foreground = File("src/main/res/drawable/ic_launcher_foreground.xml").readText()
+
+        assertTrue(background.contains("#2E2E2E"))
+        assertTrue(foreground.contains("#BDBDBD"))
+    }
+
+    @Test
+    fun lightSystemBarsUseLightIconsForDarkAppBackground() {
+        val theme = File("src/main/res/values/themes.xml").readText()
+
+        assertFalse(theme.contains("android:windowLightStatusBar\" tools:targetApi=\"23\">true"))
+        assertTrue(theme.contains("android:windowLightStatusBar\" tools:targetApi=\"23\">false"))
     }
 
     @Test

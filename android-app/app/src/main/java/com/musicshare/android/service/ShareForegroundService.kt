@@ -14,7 +14,6 @@ import com.musicshare.android.MusicShareApplication
 import com.musicshare.android.R
 import com.musicshare.android.data.RuntimeStatus
 import com.musicshare.android.tile.TileStateBridge
-import com.musicshare.android.widget.ShareWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,7 +29,6 @@ class ShareForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var running = false
     private var runtimeObserverJob: Job? = null
-    private var lastWidgetRefreshNanos = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -48,7 +46,6 @@ class ShareForegroundService : Service() {
         running = true
         startForeground(notificationId, buildProgressNotification(this, RuntimeStatus(isProcessing = true, currentStage = "初始化中")))
         TileStateBridge.requestRefresh(this)
-        ShareWidgetProvider.requestRefresh(this)
         val container = (application as MusicShareApplication).container
         val coordinator = container.shareCoordinator
         runtimeObserverJob?.cancel()
@@ -57,11 +54,8 @@ class ShareForegroundService : Service() {
                 .map { it.runtime }
                 .distinctUntilChanged()
                 .collect { runtime ->
-                    if (running) {
-                        if (runtime.isProcessing) {
-                            showProgressNotification(runtime)
-                        }
-                        refreshWidgetIfDue(runtime)
+                    if (running && runtime.isProcessing) {
+                        showProgressNotification(runtime)
                     }
                 }
         }
@@ -75,10 +69,9 @@ class ShareForegroundService : Service() {
                 running = false
                 runtimeObserverJob?.cancel()
                 runtimeObserverJob = null
-                stopForeground(STOP_FOREGROUND_DETACH)
-                showShortcutNotification(this@ShareForegroundService)
+                val resultPosted = showResultNotification(this@ShareForegroundService, container.stateStore.read().runtime)
+                stopForeground(if (resultPosted) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)
                 TileStateBridge.requestRefresh(this@ShareForegroundService)
-                ShareWidgetProvider.requestRefresh(this@ShareForegroundService)
                 stopSelf()
             }
         }
@@ -120,27 +113,16 @@ class ShareForegroundService : Service() {
         try {
             notificationManager.notify(notificationId, buildProgressNotification(this, runtime))
         } catch (_: SecurityException) {
-            // Android 13+ can deny notification posting; direct share still works from widget/tile.
+            // Android 13+ can deny notification posting; direct share still works from tile/notification action.
         }
     }
 
-    private fun refreshWidgetIfDue(runtime: RuntimeStatus) {
-        val now = System.nanoTime()
-        val shouldRefresh = runtime.progressPercent <= 0 ||
-            runtime.progressPercent >= 100 ||
-            now - lastWidgetRefreshNanos >= widgetRefreshIntervalNanos
-        if (shouldRefresh) {
-            lastWidgetRefreshNanos = now
-            ShareWidgetProvider.requestRefresh(this)
-        }
-    }
 
     companion object {
         private const val notificationChannelId = "music-share-processing"
         private const val notificationId = 2087
         private const val pendingShareRequestCode = 2089
         private const val actionShareLatest = "com.musicshare.android.action.SHARE_LATEST"
-        private const val widgetRefreshIntervalNanos = 1_000_000_000L
 
         fun start(context: Context) {
             androidx.core.content.ContextCompat.startForegroundService(context, shareIntent(context))
@@ -149,10 +131,25 @@ class ShareForegroundService : Service() {
         fun showShortcutNotification(context: Context) {
             createNotificationChannel(context)
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (hasActiveShareNotification(notificationManager)) {
+                return
+            }
             try {
                 notificationManager.notify(notificationId, buildShortcutNotification(context))
             } catch (_: SecurityException) {
-                // Android 13+ can deny notification posting; direct share still works from widget/tile.
+                // Android 13+ can deny notification posting; direct share still works from tile/notification action.
+            }
+        }
+
+        fun showResultNotification(context: Context, runtime: RuntimeStatus): Boolean {
+            createNotificationChannel(context)
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            return try {
+                notificationManager.notify(notificationId, buildResultNotification(context, runtime))
+                true
+            } catch (_: SecurityException) {
+                // Android 13+ can deny notification posting; direct share still works from tile/notification action.
+                false
             }
         }
 
@@ -185,6 +182,37 @@ class ShareForegroundService : Service() {
                     sharePendingIntent(context),
                 )
                 .build()
+
+        private fun buildResultNotification(context: Context, runtime: RuntimeStatus): Notification {
+            val title = when {
+                runtime.lastError.isNotBlank() -> context.getString(R.string.notification_title_failed)
+                runtime.lastShareUrl.isNotBlank() -> context.getString(R.string.notification_title_ready)
+                else -> context.getString(R.string.notification_title_shortcut)
+            }
+            val content = when {
+                runtime.lastError.isNotBlank() -> runtime.lastError
+                runtime.lastShareUrl.isNotBlank() -> context.getString(R.string.notification_body_ready)
+                else -> context.getString(R.string.notification_body_shortcut)
+            }
+            return NotificationCompat.Builder(context, notificationChannelId)
+                .setSmallIcon(R.drawable.ic_music_tile)
+                .setContentTitle(title)
+                .setContentText(content)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+                .setContentIntent(sharePendingIntent(context))
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setShowWhen(false)
+                .addAction(
+                    R.drawable.ic_music_tile,
+                    context.getString(R.string.notification_action_share_again),
+                    sharePendingIntent(context),
+                )
+                .build()
+        }
 
         private fun buildProgressNotification(context: Context, runtime: RuntimeStatus): Notification {
             val content = buildProgressContent(context, runtime)
@@ -233,6 +261,9 @@ class ShareForegroundService : Service() {
             }
             manager.createNotificationChannel(channel)
         }
+
+        private fun hasActiveShareNotification(notificationManager: NotificationManager): Boolean =
+            notificationManager.activeNotifications.any { notification -> notification.id == notificationId }
 
         private fun shareIntent(context: Context): Intent =
             Intent(context, ShareForegroundService::class.java).setAction(actionShareLatest)
