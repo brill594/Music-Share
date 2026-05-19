@@ -1,6 +1,9 @@
 package com.musicshare.android
+import android.Manifest
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,12 +13,14 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.musicshare.android.service.ShareForegroundService
 import com.musicshare.android.ui.MainViewModel
 import com.musicshare.android.ui.MusicShareScreen
 import com.musicshare.android.ui.MusicShareTheme
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MainViewModel> { MainViewModel.factory(application) }
@@ -37,6 +42,14 @@ class MainActivity : ComponentActivity() {
         viewModel.importConfig(uri, preserveInstallIdOnImport)
     }
 
+    private val backgroundImageLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        viewModel.uploadAdminBackground(uri)
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        ShareForegroundService.start(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -50,17 +63,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            MusicShareTheme {
+            MusicShareTheme(
+                albumArtSeedArgb = uiState.appState.latestTrack?.artworkColorArgb?.takeIf { it != 0L },
+            ) {
                 MusicShareScreen(
                     uiState = uiState,
                     snackbarHostState = snackbarHostState,
                     onPickMusicTree = { openTreeLauncher.launch(null) },
-                    onShareNow = { ShareForegroundService.start(this) },
+                    onShareNow = { startShareWithNotificationPrompt() },
                     onAuthenticateUser = { vm.authenticate(preferAdmin = false) },
                     onAuthenticateAdmin = { vm.authenticate(preferAdmin = true) },
                     onRefreshShares = { vm.refreshShares() },
                     onTerminateClientShare = vm::terminateClientShare,
                     onTerminateAdminShare = vm::terminateAdminShare,
+                    onUploadAdminBackground = {
+                        backgroundImageLauncher.launch(arrayOf("image/jpeg", "image/png", "image/webp"))
+                    },
                     onExportConfig = { exportLauncher.launch("music-share-config.json") },
                     onImportConfigPreserveId = {
                         preserveInstallIdOnImport = true
@@ -71,9 +89,36 @@ class MainActivity : ComponentActivity() {
                         importLauncher.launch(arrayOf("application/json", "text/plain"))
                     },
                     onSaveSettings = vm::saveSettings,
+                    onSaveUsageLimits = vm::saveAdminUsageLimits,
                     onClearSession = vm::clearSession,
                 )
             }
         }
+        showCurrentShareNotification()
     }
+
+    private fun startShareWithNotificationPrompt() {
+        if (!canPostNotifications()) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ShareForegroundService.start(this)
+        }
+    }
+
+    private fun showCurrentShareNotification() {
+        if (!canPostNotifications()) return
+        lifecycleScope.launch {
+            val runtime = (application as MusicShareApplication).container.stateStore.read().runtime
+            when {
+                runtime.isProcessing -> return@launch
+                runtime.lastError.isNotBlank() || runtime.lastShareUrl.isNotBlank() -> {
+                    ShareForegroundService.showResultNotification(this@MainActivity, runtime)
+                }
+                else -> ShareForegroundService.showShortcutNotification(this@MainActivity)
+            }
+        }
+    }
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }

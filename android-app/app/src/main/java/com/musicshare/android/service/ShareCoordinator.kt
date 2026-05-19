@@ -6,6 +6,7 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import com.musicshare.android.artwork.AlbumArtworkRepository
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.data.TranscodeConfig
@@ -28,6 +29,7 @@ class ShareCoordinator(
     private val stateStore: AppStateStore,
     private val backendRepository: MusicShareBackendRepository,
     private val documentUriResolver: DocumentUriResolver,
+    private val albumArtworkRepository: AlbumArtworkRepository,
 ) {
     private val shareMutex = Mutex()
     private val audioTranscoder = FfmpegAudioTranscoder(context)
@@ -50,10 +52,18 @@ class ShareCoordinator(
             preparedUpload = prepareUpload(track)
             updateRuntime(
                 processing = true,
-                stage = if (preparedUpload.isFromPreparedCache) "复用缓存音频后上传" else "上传到后端",
-                progressPercent = if (preparedUpload.isFromPreparedCache) 100 else -1,
+                stage = "上传到后端",
+                progressPercent = 0,
             )
-            val uploaded = backendRepository.upload(preparedUpload)
+            val uploaded = backendRepository.upload(preparedUpload) { progress ->
+                if (progress.percent >= 0) {
+                    updateRuntimeBlocking(
+                        processing = true,
+                        stage = if (progress.percent >= 100) "等待后端生成分享链接" else "上传到后端",
+                        progressPercent = progress.percent,
+                    )
+                }
+            }
             uploadSucceeded = true
             copyToClipboard(uploaded.shareUrl)
             updateRuntime(
@@ -67,7 +77,7 @@ class ShareCoordinator(
         } catch (error: Throwable) {
             val finalMessage = buildFailureMessage(
                 originalMessage = error.message ?: "分享失败。",
-                hasReusablePreparedUpload = preparedUpload != null && !uploadSucceeded,
+                hasReusablePreparedUpload = preparedUpload?.isRetryCacheReady == true && !uploadSucceeded,
             )
             updateRuntime(
                 processing = false,
@@ -86,7 +96,17 @@ class ShareCoordinator(
         val state = stateStore.read()
         val latest = state.latestTrack ?: return
         val resolved = resolveTrack(latest, state.musicTreeUri) ?: return
-        stateStore.update { it.copy(latestTrack = resolved) }
+        val themed = if (albumArtworkRepository.hasUsableArtwork(resolved)) {
+            resolved
+        } else {
+            albumArtworkRepository.extract(resolved)?.let {
+                resolved.copy(
+                    artUri = it.artUri,
+                    artworkColorArgb = it.artworkColorArgb,
+                )
+            } ?: resolved.copy(artUri = "", artworkColorArgb = 0L)
+        }
+        stateStore.update { it.copy(latestTrack = themed) }
     }
 
     private suspend fun resolveTrack(
@@ -150,16 +170,10 @@ class ShareCoordinator(
         }
 
         updateRuntime(processing = true, stage = "提取封面", progressPercent = -1)
-        val coverResult = metadata.coverBytes?.let { bytes ->
-            val coverMime = detectImageMime(bytes) ?: return@let null
-            val coverFile = File.createTempFile(
-                "music-share-cover-${UUID.randomUUID()}",
-                extensionForMime(coverMime),
-                context.cacheDir,
-            )
-            FileOutputStream(coverFile).use { output -> output.write(bytes) }
-            coverFile to coverMime
-        }
+        val coverResult = extractCover(
+            sourceUri = sourceUri,
+            metadata = metadata,
+        )
 
         val preparedUpload = PreparedUpload(
             audioFile = preparedAudio.file,
@@ -219,6 +233,30 @@ class ShareCoordinator(
             file = audioFile,
             audioMimeType = targetMimeType,
         )
+    }
+
+    private suspend fun extractCover(
+        sourceUri: Uri,
+        metadata: ExtractedMetadata,
+    ): Pair<File, String>? {
+        metadata.coverBytes?.let { bytes ->
+            val coverMime = detectImageMime(bytes)
+            if (coverMime != null) {
+                return writeCoverBytesToFile(bytes, coverMime)
+            }
+        }
+        val extractedArtwork = audioTranscoder.extractEmbeddedArtwork(sourceUri) ?: return null
+        return extractedArtwork.file to extractedArtwork.mimeType
+    }
+
+    private fun writeCoverBytesToFile(bytes: ByteArray, coverMime: String): Pair<File, String> {
+        val coverFile = File.createTempFile(
+            "music-share-cover-${UUID.randomUUID()}",
+            extensionForMime(coverMime),
+            context.cacheDir,
+        )
+        FileOutputStream(coverFile).use { output -> output.write(bytes) }
+        return coverFile to coverMime
     }
 
     private fun readMetadata(
@@ -288,12 +326,14 @@ class ShareCoordinator(
         stage: String,
         progressPercent: Int,
     ) {
-        kotlinx.coroutines.runBlocking {
-            updateRuntime(
-                processing = processing,
-                stage = stage,
-                progressPercent = progressPercent,
-            )
+        runCatching {
+            kotlinx.coroutines.runBlocking {
+                updateRuntime(
+                    processing = processing,
+                    stage = stage,
+                    progressPercent = progressPercent,
+                )
+            }
         }
     }
 
@@ -304,10 +344,10 @@ class ShareCoordinator(
         if (!hasReusablePreparedUpload) {
             return originalMessage
         }
-        if (originalMessage.contains("可直接重试")) {
+        if (originalMessage.contains("跳过转码")) {
             return originalMessage
         }
-        return "$originalMessage 已保留最近一次准备好的音频，可直接重试。"
+        return "$originalMessage 已保留最近一次准备好的音频，重试时会跳过转码并重新上传；如果刚才网络在完成后中断，请先刷新分享列表确认是否已生成链接。"
     }
 
     private suspend fun copyToClipboard(url: String) = withContext(Dispatchers.Main) {

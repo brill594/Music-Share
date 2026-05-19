@@ -45,7 +45,14 @@ class ShareUrls:
     track_url: str
     stream_url: str
     cover_url: str | None
+    background_url: str | None
 
+
+@dataclass(slots=True)
+class GlobalBackgroundConfig:
+    mime_type: str
+    path: str
+    updated_at: str
 
 class AuthService:
     def __init__(self, settings: Settings, database: Database) -> None:
@@ -178,6 +185,105 @@ class StorageService:
     def delete_share_assets(self, share: ShareRecord) -> None:
         shutil.rmtree(self.settings.storage_root / share.uuid, ignore_errors=True)
 
+    def read_global_background_config(self) -> GlobalBackgroundConfig | None:
+        manifest_path = self.settings.storage_root / "global-background.json"
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        except json.JSONDecodeError:
+            return None
+        mime_type = str(payload.get("mime_type") or "")
+        path = str(payload.get("path") or "")
+        updated_at = str(payload.get("updated_at") or "")
+        if not mime_type or not path or not updated_at:
+            return None
+        background_path = self.settings.storage_root / path
+        if not background_path.is_file():
+            return None
+        return GlobalBackgroundConfig(mime_type=mime_type, path=path, updated_at=updated_at)
+
+    async def stage_global_background(self, upload: UploadFile) -> GlobalBackgroundConfig:
+        mime_type = normalize_mime_type(
+            upload.content_type,
+            allowed=self.settings.allowed_image_mime_types,
+            field_name="background content_type",
+        )
+        extension = extension_for_mime(mime_type)
+        background_dir = self.settings.storage_root / "global-background"
+        background_dir.mkdir(parents=True, exist_ok=True)
+        background_dir.chmod(0o755)
+        relative_path = Path("global-background") / f"staged-{uuid4()}{extension}"
+        destination = self.settings.storage_root / relative_path
+        try:
+            await self._write_upload(
+                upload,
+                destination,
+                self.settings.max_cover_upload_bytes,
+            )
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+        return GlobalBackgroundConfig(
+            mime_type=mime_type,
+            path=relative_path.as_posix(),
+            updated_at=to_iso(utcnow()),
+        )
+
+    def publish_global_background(self, staged: GlobalBackgroundConfig) -> GlobalBackgroundConfig:
+        old_config = self.read_global_background_config()
+        staged_path = self.settings.storage_root / staged.path
+        extension = staged_path.suffix
+        final_relative_path = Path("global-background") / f"background-{uuid4()}{extension}"
+        final_path = self.settings.storage_root / final_relative_path
+        try:
+            staged_path.rename(final_path)
+            config = GlobalBackgroundConfig(
+                mime_type=staged.mime_type,
+                path=final_relative_path.as_posix(),
+                updated_at=staged.updated_at,
+            )
+            manifest_path = self.settings.storage_root / "global-background.json"
+            manifest_tmp_path = self.settings.storage_root / f"global-background.{uuid4()}.tmp"
+            manifest_tmp_path.write_text(
+                json.dumps(
+                    {
+                        "mime_type": config.mime_type,
+                        "path": config.path,
+                        "updated_at": config.updated_at,
+                    },
+                    ensure_ascii=True,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            manifest_tmp_path.chmod(0o600)
+            manifest_tmp_path.replace(manifest_path)
+        except Exception:
+            final_path.unlink(missing_ok=True)
+            raise
+        if old_config is not None and old_config.path != config.path:
+            (self.settings.storage_root / old_config.path).unlink(missing_ok=True)
+        return config
+
+    def global_background_response(self) -> FileResponse:
+        config = self.read_global_background_config()
+        if config is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Background not configured.",
+            )
+        return FileResponse(
+            self.settings.storage_root / config.path,
+            media_type=config.mime_type,
+        )
+
+    def delete_global_background(self, config: GlobalBackgroundConfig) -> None:
+        (self.settings.storage_root / config.path).unlink(missing_ok=True)
+        current = self.read_global_background_config()
+        if current is not None and current.path == config.path:
+            (self.settings.storage_root / "global-background.json").unlink(missing_ok=True)
+
     def audio_response(self, share: ShareRecord) -> Response:
         audio_path = self.settings.storage_root / share.audio_path
         filename = build_download_filename(share)
@@ -235,7 +341,7 @@ class StorageService:
                 written += len(chunk)
                 if written > max_bytes:
                     raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                         detail=f"Upload exceeds {max_bytes} bytes.",
                     )
                 handle.write(chunk)
@@ -304,7 +410,13 @@ class CleanupService:
                 continue
 
 
-def build_share_urls(settings: Settings, request: Request, share: ShareRecord) -> ShareUrls:
+def build_share_urls(
+    settings: Settings,
+    request: Request,
+    share: ShareRecord,
+    *,
+    include_global_background: bool = False,
+) -> ShareUrls:
     api_base = resolve_public_base_url(settings.public_api_base_url, request)
     share_base = resolve_public_base_url(settings.public_share_base_url, request)
     return ShareUrls(
@@ -312,6 +424,7 @@ def build_share_urls(settings: Settings, request: Request, share: ShareRecord) -
         track_url=f"{api_base}/track/{share.share_code}",
         stream_url=f"{api_base}/stream/{share.share_code}",
         cover_url=f"{api_base}/cover/{share.share_code}" if share.cover_path else None,
+        background_url=f"{api_base}/background" if include_global_background else None,
     )
 
 
@@ -319,8 +432,10 @@ def serialize_share_public(
     settings: Settings,
     request: Request,
     share: ShareRecord,
+    *,
+    include_global_background: bool = False,
 ) -> dict[str, Any]:
-    urls = build_share_urls(settings, request, share)
+    urls = build_share_urls(settings, request, share, include_global_background=include_global_background)
     return {
         "share_code": share.share_code,
         "title": share.title,
@@ -332,6 +447,7 @@ def serialize_share_public(
         "track_url": urls.track_url,
         "stream_url": urls.stream_url,
         "cover_url": urls.cover_url,
+        "background_url": urls.background_url,
         "created_at": to_iso(share.created_at),
         "expires_at": to_iso(share.expires_at),
         "status": share.effective_status(),
@@ -342,8 +458,10 @@ def serialize_share_upload(
     settings: Settings,
     request: Request,
     share: ShareRecord,
+    *,
+    include_global_background: bool = False,
 ) -> dict[str, Any]:
-    payload = serialize_share_public(settings, request, share)
+    payload = serialize_share_public(settings, request, share, include_global_background=include_global_background)
     payload["uuid"] = share.uuid
     return payload
 
@@ -354,8 +472,9 @@ def serialize_share_management(
     share: ShareRecord,
     *,
     include_client_install_id: bool = False,
+    include_global_background: bool = False,
 ) -> dict[str, Any]:
-    payload = serialize_share_public(settings, request, share)
+    payload = serialize_share_public(settings, request, share, include_global_background=include_global_background)
     payload.update(
         {
             "client_install_id": share.client_install_id if include_client_install_id else None,
@@ -367,6 +486,95 @@ def serialize_share_management(
     if not include_client_install_id:
         payload.pop("client_install_id")
     return payload
+
+def serialize_global_background(
+    settings: Settings,
+    request: Request,
+    config: GlobalBackgroundConfig | None,
+) -> dict[str, Any]:
+    api_base = resolve_public_base_url(settings.public_api_base_url, request)
+    return {
+        "configured": config is not None,
+        "background_url": f"{api_base}/background" if config else None,
+        "updated_at": config.updated_at if config else None,
+    }
+
+
+def serialize_usage_summary(
+    settings: Settings,
+    config: dict[str, Any] | None = None,
+    counters: dict[str, Any] | None = None,
+    storage_live_bytes: int | None = None,
+) -> dict[str, Any]:
+    now = to_iso(utcnow())
+    if storage_live_bytes is None:
+        storage_root = settings.storage_root
+        live_bytes = 0
+        if storage_root.exists():
+            live_bytes = sum(path.stat().st_size for path in storage_root.rglob("*") if path.is_file())
+    else:
+        live_bytes = storage_live_bytes
+    used_gb = live_bytes / 1_000_000_000
+    config = config or {}
+    counters = counters or {}
+    enabled = bool(config.get("enabled", True))
+    updated_at = config.get("updated_at") if isinstance(config.get("updated_at"), str) else None
+    d1_rows_read_daily_limit = int(config.get("d1_rows_read_daily_limit", 5_000_000))
+    d1_rows_written_daily_limit = int(config.get("d1_rows_written_daily_limit", 100_000))
+    storage_limit_gb = float(config.get("d1_storage_gb_limit", 5.0))
+    r2_class_a_rolling_30d_limit = int(config.get("r2_class_a_rolling_30d_limit", 1_000_000))
+    r2_class_b_rolling_30d_limit = int(config.get("r2_class_b_rolling_30d_limit", 10_000_000))
+    r2_limit_gb_month = float(config.get("r2_storage_gb_month_limit", 10.0))
+    d1_rows_read_daily = int(counters.get("d1_rows_read_daily", 0))
+    d1_rows_written_daily = int(counters.get("d1_rows_written_daily", 0))
+    r2_class_a_rolling_30d = int(counters.get("r2_class_a_rolling_30d", 0))
+    r2_class_b_rolling_30d = int(counters.get("r2_class_b_rolling_30d", 0))
+    return {
+        "enabled": enabled,
+        "updated_at": updated_at,
+        "generated_at": now,
+        "cloudflare_reference": {
+            "rolling_window_days": 30,
+            "d1_rows_read_daily_limit": d1_rows_read_daily_limit,
+            "d1_rows_written_daily_limit": d1_rows_written_daily_limit,
+            "d1_storage_gb_limit": storage_limit_gb,
+            "r2_class_a_rolling_30d_limit": r2_class_a_rolling_30d_limit,
+            "r2_class_b_rolling_30d_limit": r2_class_b_rolling_30d_limit,
+            "r2_storage_gb_month_limit": r2_limit_gb_month,
+        },
+        "d1_rows_read_daily": {
+            "used": d1_rows_read_daily,
+            "limit": d1_rows_read_daily_limit,
+            "exceeded": d1_rows_read_daily > d1_rows_read_daily_limit,
+        },
+        "d1_rows_written_daily": {
+            "used": d1_rows_written_daily,
+            "limit": d1_rows_written_daily_limit,
+            "exceeded": d1_rows_written_daily > d1_rows_written_daily_limit,
+        },
+        "d1_storage": {
+            "used_bytes": live_bytes,
+            "used_gb": used_gb,
+            "limit_gb": storage_limit_gb,
+            "exceeded": used_gb > storage_limit_gb,
+        },
+        "r2_class_a_rolling_30d": {
+            "used": r2_class_a_rolling_30d,
+            "limit": r2_class_a_rolling_30d_limit,
+            "exceeded": r2_class_a_rolling_30d > r2_class_a_rolling_30d_limit,
+        },
+        "r2_class_b_rolling_30d": {
+            "used": r2_class_b_rolling_30d,
+            "limit": r2_class_b_rolling_30d_limit,
+            "exceeded": r2_class_b_rolling_30d > r2_class_b_rolling_30d_limit,
+        },
+        "r2_storage_rolling_30d": {
+            "used_gb_month": used_gb,
+            "limit_gb_month": r2_limit_gb_month,
+            "live_bytes": live_bytes,
+            "exceeded": used_gb > r2_limit_gb_month,
+        },
+    }
 
 
 def require_share_available(share: ShareRecord | None) -> ShareRecord:

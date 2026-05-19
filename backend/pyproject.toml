@@ -3,7 +3,7 @@ name = "music-share-backend"
 version = "0.1.0"
 description = "Temporary audio sharing backend for Music Share."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.116,<1.0",
   "python-multipart>=0.0.20,<1.0",

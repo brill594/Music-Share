@@ -1,14 +1,18 @@
 package com.musicshare.android.network
 
 import android.content.Context
+import android.net.Uri
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.PersistedAppState
 import com.musicshare.android.data.SessionSnapshot
 import com.musicshare.android.util.UserVisibleException
 import com.musicshare.android.util.normalizeBaseUrl
 import com.musicshare.android.util.nowIso
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -31,6 +35,9 @@ class MusicShareBackendRepository(
         explicitNulls = false
     }
     private val httpClient = OkHttpClient.Builder().build()
+    private val uploadHttpClient = httpClient.newBuilder()
+        .retryOnConnectionFailure(false)
+        .build()
 
     suspend fun ensureSession(preferAdmin: Boolean = false): SessionSnapshot {
         val current = stateStore.read()
@@ -68,8 +75,11 @@ class MusicShareBackendRepository(
         return session
     }
 
-    suspend fun upload(preparedUpload: PreparedUpload): ShareItemDto =
-        withAuthorizedSession { state, session ->
+    suspend fun upload(
+        preparedUpload: PreparedUpload,
+        onProgress: (UploadProgress) -> Unit = {},
+    ): ShareItemDto =
+        withAuthorizedSession(retryOnSessionExpired = false) { state, session ->
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart(
@@ -96,8 +106,9 @@ class MusicShareBackendRepository(
                     .url(resolveBaseUrl(state).newBuilder().addPathSegment("upload").build())
                     .header("X-Client-Install-Id", state.clientInstallId)
                     .applySession(session)
-                    .post(body.build())
+                    .post(UploadProgressRequestBody(body.build(), onProgress = onProgress))
                     .build(),
+                client = uploadHttpClient,
             )
         }
 
@@ -159,6 +170,71 @@ class MusicShareBackendRepository(
             )
         }
 
+    suspend fun getAdminBackground(): AdminBackgroundDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("admin/background").build())
+                    .applySession(session)
+                    .get()
+                    .build(),
+            )
+        }
+
+    suspend fun uploadAdminBackground(imageUri: Uri): AdminBackgroundDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            val staged = stageImageUpload(imageUri)
+            try {
+                executeJson(
+                    Request.Builder()
+                        .url(
+                            resolveBaseUrl(state).newBuilder()
+                                .addPathSegments("admin/background")
+                                .build(),
+                        )
+                        .applySession(session)
+                        .post(
+                            MultipartBody.Builder()
+                                .setType(MultipartBody.FORM)
+                                .addFormDataPart(
+                                    name = "background",
+                                    filename = staged.file.name,
+                                    body = staged.file.asRequestBody(staged.mimeType.toMediaType()),
+                                )
+                                .build(),
+                        )
+                        .build(),
+                )
+            } finally {
+                staged.file.delete()
+            }
+        }
+
+    suspend fun getAdminUsage(): AdminUsageDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("admin/usage").build())
+                    .applySession(session)
+                    .get()
+                    .build(),
+            )
+        }
+
+    suspend fun updateAdminUsage(request: AdminUsageUpdateRequest): AdminUsageDto =
+        withAuthorizedSession(preferAdmin = true) { state, session ->
+            executeJson(
+                Request.Builder()
+                    .url(resolveBaseUrl(state).newBuilder().addPathSegments("admin/usage").build())
+                    .applySession(session)
+                    .post(
+                        json.encodeToString(AdminUsageUpdateRequest.serializer(), request)
+                            .toRequestBody("application/json".toMediaType()),
+                    )
+                    .build(),
+            )
+        }
+
     suspend fun clearSession() {
         stateStore.update {
             it.copy(session = SessionSnapshot())
@@ -178,6 +254,7 @@ class MusicShareBackendRepository(
 
     private suspend fun <T> withAuthorizedSession(
         preferAdmin: Boolean = false,
+        retryOnSessionExpired: Boolean = true,
         block: suspend (PersistedAppState, SessionSnapshot) -> T,
     ): T {
         val initialState = stateStore.read()
@@ -189,14 +266,21 @@ class MusicShareBackendRepository(
         return try {
             block(stateStore.read(), initialSession)
         } catch (error: SessionExpiredException) {
+            if (!retryOnSessionExpired) {
+                clearSession()
+                throw UserVisibleException("登录状态已失效，请重新认证后重试。")
+            }
             clearSession()
             val refreshed = ensureSession(preferAdmin)
             block(stateStore.read(), refreshed)
         }
     }
 
-    private suspend inline fun <reified T> executeJson(request: Request): T = withContext(Dispatchers.IO) {
-        val response = runCatching { httpClient.newCall(request).execute() }.getOrElse { error ->
+    private suspend inline fun <reified T> executeJson(
+        request: Request,
+        client: OkHttpClient = httpClient,
+    ): T = withContext(Dispatchers.IO) {
+        val response = runCatching { client.newCall(request).execute() }.getOrElse { error ->
             throw mapCallError(error, request.url)
         }
         response.use { call ->
@@ -248,6 +332,24 @@ class MusicShareBackendRepository(
         }.getOrNull()
     }
 
+    private fun stageImageUpload(imageUri: Uri): StagedImageUpload {
+        val mimeType = context.contentResolver.getType(imageUri)?.lowercase(Locale.US)
+            ?.takeIf { it == "image/jpeg" || it == "image/png" || it == "image/webp" }
+            ?: throw UserVisibleException("仅支持 JPEG、PNG 或 WebP 图片。")
+        val suffix = when (mimeType) {
+            "image/jpeg" -> ".jpg"
+            "image/png" -> ".png"
+            else -> ".webp"
+        }
+        val file = File.createTempFile("music-share-background-${UUID.randomUUID()}", suffix, context.cacheDir)
+        context.contentResolver.openInputStream(imageUri)?.use { input ->
+            FileOutputStream(file).use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw UserVisibleException("无法读取所选图片。")
+        return StagedImageUpload(file = file, mimeType = mimeType)
+    }
+
     private fun mapCallError(error: Throwable, requestUrl: HttpUrl): UserVisibleException {
         return when (error) {
             is UserVisibleException -> error
@@ -291,4 +393,9 @@ class MusicShareBackendRepository(
     }
 
     private class SessionExpiredException : IOException()
+
+    private data class StagedImageUpload(
+        val file: File,
+        val mimeType: String,
+    )
 }

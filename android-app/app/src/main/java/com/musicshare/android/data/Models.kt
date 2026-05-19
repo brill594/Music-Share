@@ -96,6 +96,7 @@ data class CurrentTrackSnapshot(
     val album: String = "",
     val durationMs: Long = 0,
     val artUri: String = "",
+    val artworkColorArgb: Long = 0L,
     val trackId: String = "",
     val playbackState: String = "",
     val updatedAt: String = "",

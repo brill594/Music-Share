@@ -22,14 +22,27 @@ const currentShareCode = computed(() => {
 });
 
 const pageBackdropStyle = computed(() => {
-  if (!track.value?.cover_url) {
+  const backgroundUrl = track.value?.background_url ?? "";
+  if (!backgroundUrl) {
     return {};
   }
 
   return {
-    backgroundImage: `url("${track.value.cover_url}")`,
+    backgroundImage: `url("${backgroundUrl}")`,
   };
 });
+const hasImageBackdrop = computed(() => Boolean(track.value?.background_url));
+
+function syncGlobalBackdrop(backgroundUrl: string | null | undefined): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.style.setProperty(
+    "--app-page-backdrop-image",
+    backgroundUrl ? `url("${backgroundUrl}")` : "none",
+  );
+}
 
 const audioDownloadLabel = computed(() => {
   const { loaded, total } = downloadProgress.value;
@@ -122,7 +135,16 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => track.value?.background_url,
+  (backgroundUrl) => {
+    syncGlobalBackdrop(backgroundUrl);
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
+  syncGlobalBackdrop(null);
   trackStore.teardown();
 });
 </script>
@@ -134,74 +156,152 @@ onBeforeUnmount(() => {
     <div class="page-shell__grain"></div>
 
     <main class="page-shell__content">
-      <section class="page-card page-card--wide track-page">
-        <StatusBanner
-          :tone="bannerTone"
-          :title="bannerTitle"
-          :detail="bannerDetail"
-          :progress="phase === 'audio' ? downloadProgress.percent : null"
-          :action-label="viewState === 'error' ? '重新加载' : undefined"
-          @action="void retryCurrentShare()"
-        />
+      <div
+        :class="['track-page-surface', { 'track-page-surface--with-image': hasImageBackdrop }]"
+      >
+        <section class="page-card page-card--wide track-page">
+          <StatusBanner
+            :tone="bannerTone"
+            :title="bannerTitle"
+            :detail="bannerDetail"
+            :progress="phase === 'audio' ? downloadProgress.percent : null"
+            :action-label="viewState === 'error' ? '重新加载' : undefined"
+            @action="void retryCurrentShare()"
+          />
 
-        <div v-if="track" class="track-page__stack">
-          <div class="track-page__content-grid">
-            <div class="track-page__hero-slot">
-              <TrackHero
-                :title="track.title"
-                :artist="track.artist"
-                :album="track.album"
-                :duration-ms="track.duration_ms"
-                :audio-mime="track.audio_mime"
-                :cover-url="track.cover_url"
-                :expires-at="track.expires_at"
-              />
-            </div>
-
-            <div class="track-page__player-slot">
-              <div v-if="audioUrl" class="track-page__section">
-                <AudioPlayer
-                  :source-url="audioUrl"
-                  :track-title="track.title"
+          <div v-if="track" class="track-page__stack">
+            <div class="track-page__content-grid">
+              <div class="track-page__hero-slot">
+                <TrackHero
+                  :title="track.title"
+                  :artist="track.artist"
+                  :album="track.album"
                   :duration-ms="track.duration_ms"
+                  :audio-mime="track.audio_mime"
+                  :cover-url="track.cover_url"
+                  :expires-at="track.expires_at"
                 />
               </div>
 
-              <section v-else class="track-page__pending-audio">
-                <p class="track-page__pending-title">播放器即将就绪</p>
-                <p class="track-page__pending-detail">
-                  正在准备音频，完成后即可播放。
-                </p>
-              </section>
-            </div>
+              <div class="track-page__player-slot">
+                <div v-if="audioUrl" class="track-page__section">
+                  <AudioPlayer
+                    :source-url="audioUrl"
+                    :track-title="track.title"
+                    :duration-ms="track.duration_ms"
+                  />
+                </div>
 
-            <div class="track-page__copy-slot">
-              <MetadataCopyPanel
-                :title="track.title"
-                :artist="track.artist"
-                :album="track.album"
-              />
+                <section v-else class="track-page__pending-audio">
+                  <p class="track-page__pending-title">播放器即将就绪</p>
+                  <p class="track-page__pending-detail">
+                    正在准备音频，完成后即可播放。
+                  </p>
+                </section>
+              </div>
+
+              <div class="track-page__copy-slot">
+                <MetadataCopyPanel
+                  :title="track.title"
+                  :artist="track.artist"
+                  :album="track.album"
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        <section v-else class="track-page__placeholder">
-          <div class="track-page__placeholder-cover"></div>
-          <div class="track-page__placeholder-lines">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
+          <section v-else class="track-page__placeholder">
+            <div class="track-page__placeholder-cover"></div>
+            <div class="track-page__placeholder-lines">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </section>
         </section>
-      </section>
+      </div>
     </main>
   </div>
 </template>
 
 <style scoped>
+.track-page-surface {
+  --text: #fff9f0;
+  --muted: #d6dde5;
+  --track-page-label: #e8c8d7;
+  --track-page-heading-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
+  --track-page-panel-bg: rgba(44, 52, 63, 0.18);
+  --track-page-panel-bg-strong: rgba(34, 41, 52, 0.24);
+  --track-page-panel-border: rgba(255, 255, 255, 0.12);
+  --track-page-action-bg: rgba(255, 134, 181, 0.24);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 100%;
+  border-radius: 30px;
+}
+
+.track-page-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: inherit;
+  background-image:
+    radial-gradient(circle at top left, rgba(255, 210, 228, 0.08), transparent 34%),
+    linear-gradient(140deg, rgba(255, 241, 246, 0.08), rgba(245, 225, 234, 0.04));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0.42;
+  backdrop-filter: blur(12px) saturate(1.04);
+  -webkit-backdrop-filter: blur(12px) saturate(1.04);
+  box-shadow:
+    0 32px 90px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.track-page-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, rgba(255, 245, 249, 0.06), rgba(255, 239, 245, 0.03) 20%, rgba(38, 26, 34, 0.06) 48%, rgba(38, 26, 34, 0.14) 100%),
+    rgba(54, 38, 47, 0.08);
+  pointer-events: none;
+}
+
+.track-page-surface--with-image {
+  --text: #fffdf9;
+  --muted: #e0e7ee;
+  --track-page-label: #f1cddd;
+  --track-page-heading-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+  --track-page-panel-bg: rgba(36, 22, 31, 0.16);
+  --track-page-panel-bg-strong: rgba(24, 14, 22, 0.22);
+  --track-page-panel-border: rgba(255, 255, 255, 0.14);
+  --track-page-action-bg: rgba(255, 134, 181, 0.34);
+}
+
+.track-page-surface--with-image::after {
+  background:
+    linear-gradient(180deg, rgba(22, 12, 18, 0.05), rgba(22, 12, 18, 0.12) 24%, rgba(22, 12, 18, 0.18) 62%, rgba(22, 12, 18, 0.26) 100%),
+    radial-gradient(circle at 18% 12%, rgba(255, 219, 232, 0.08), transparent 28%),
+    rgba(28, 14, 21, 0.10);
+}
+
 .track-page {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: 22px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .track-page__stack {
@@ -228,9 +328,9 @@ onBeforeUnmount(() => {
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.06), transparent 55%),
-    rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 55%),
+    var(--track-page-panel-bg-strong);
+  box-shadow: inset 0 0 0 1px var(--track-page-panel-border);
 }
 
 .track-page__pending-title {
@@ -246,26 +346,40 @@ onBeforeUnmount(() => {
 }
 
 .app-shell--desktop .track-page__content-grid {
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 28px;
+  gap: clamp(24px, 3vw, 40px);
 }
 
 .app-shell--desktop .track-page__hero-slot {
-  grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-column: 1 / -1;
+  grid-row: 1;
 }
 
 .app-shell--desktop .track-page__player-slot {
-  grid-column: 2;
-  grid-row: 1;
-  position: sticky;
-  top: 24px;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .app-shell--desktop .track-page__copy-slot {
   grid-column: 2;
   grid-row: 2;
+}
+
+@media (max-width: 1120px) {
+  .app-shell--desktop .track-page__content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell--desktop .track-page__hero-slot,
+  .app-shell--desktop .track-page__player-slot,
+  .app-shell--desktop .track-page__copy-slot {
+    grid-column: 1;
+  }
+
+  .app-shell--desktop .track-page__copy-slot {
+    grid-row: 3;
+  }
 }
 
 .app-shell--mobile .track-page__content-grid {
@@ -281,6 +395,10 @@ onBeforeUnmount(() => {
   border-radius: 20px;
 }
 
+.app-shell--mobile .track-page-surface {
+  border-radius: 22px;
+}
+
 .track-page__placeholder {
   display: grid;
   gap: 20px;
@@ -292,7 +410,7 @@ onBeforeUnmount(() => {
   width: min(100%, 320px);
   aspect-ratio: 1;
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(121, 255, 203, 0.2), rgba(77, 217, 191, 0.1));
+  background: linear-gradient(135deg, rgba(255, 164, 199, 0.22), rgba(255, 108, 157, 0.12));
   animation: placeholder-pulse 1.6s ease-in-out infinite;
 }
 

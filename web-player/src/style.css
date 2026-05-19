@@ -4,11 +4,12 @@
   --stroke: rgba(255, 255, 255, 0.11);
   --text: #f8eee0;
   --muted: #b9c5cf;
-  --accent: #79ffcb;
-  --secondary: #4dd9bf;
+  --accent: #ff8fb7;
+  --secondary: #ff5f95;
   --danger: #ff6b6b;
   --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-body: "Avenir Next", "Segoe UI", sans-serif;
+  --app-page-backdrop-image: none;
   color-scheme: dark;
   font-family: var(--font-body);
   background: var(--bg);
@@ -31,12 +32,22 @@ body,
   margin: 0;
 }
 
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
 body {
   overflow-x: hidden;
   background:
-    radial-gradient(circle at top left, rgba(121, 255, 203, 0.14), transparent 30%),
-    radial-gradient(circle at bottom right, rgba(77, 217, 191, 0.12), transparent 24%),
-    linear-gradient(160deg, #071017 0%, #0b1520 55%, #0a1318 100%);
+    var(--app-page-backdrop-image),
+    radial-gradient(circle at top left, rgba(255, 143, 183, 0.14), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(255, 95, 149, 0.12), transparent 24%),
+    linear-gradient(160deg, #120810 0%, #170b16 55%, #130912 100%);
+  background-position: center, top left, bottom right, center;
+  background-repeat: no-repeat;
+  background-size: cover, auto, auto, auto;
+  background-attachment: fixed, scroll, scroll, scroll;
   color: var(--text);
 }
 
@@ -46,8 +57,8 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 20% 20%, rgba(121, 255, 203, 0.09), transparent 18%),
-    radial-gradient(circle at 80% 10%, rgba(77, 217, 191, 0.07), transparent 18%),
+    radial-gradient(circle at 20% 20%, rgba(255, 143, 183, 0.09), transparent 18%),
+    radial-gradient(circle at 80% 10%, rgba(255, 95, 149, 0.07), transparent 18%),
     radial-gradient(circle at 70% 78%, rgba(255, 255, 255, 0.03), transparent 22%);
 }
 
@@ -73,7 +84,7 @@ button {
 }
 
 .app-shell--desktop {
-  --page-max-width: 1120px;
+  --page-max-width: min(92vw, 1440px);
 }
 
 .app-shell--mobile {
@@ -85,7 +96,9 @@ button {
   min-height: 100vh;
   padding: clamp(18px, 4vw, 36px);
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
+  padding-top: clamp(28px, 5vh, 72px);
 }
 
 .page-shell__cover,
@@ -97,22 +110,21 @@ button {
 }
 
 .page-shell__cover {
+  inset: -10vh -6vw;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(28px) saturate(0.82);
-  opacity: 0.3;
-  transform: scale(1.1);
+  filter: blur(16px) saturate(0.92);
+  opacity: 0.82;
+  transform: scale(1.04);
 }
 
 .page-shell__veil {
-  background:
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.06), transparent 38%),
-    linear-gradient(180deg, rgba(5, 10, 14, 0.28), rgba(5, 10, 14, 0.6));
+  background: none;
 }
 
 .page-shell__grain {
-  opacity: 0.08;
+  opacity: 0.04;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
@@ -127,7 +139,7 @@ button {
 }
 
 .page-card {
-  padding: clamp(20px, 3vw, 30px);
+  padding: clamp(20px, 3vw, 40px);
   border-radius: 30px;
   border: 1px solid var(--stroke);
   background:
@@ -141,13 +153,13 @@ button {
 }
 
 .page-card--wide {
-  width: min(100%, 1040px);
+  width: 100%;
 }
 
 .state-page {
   display: grid;
   gap: 18px;
-  width: min(100%, 680px);
+  width: min(100%, 720px);
   text-align: left;
 }
 
@@ -192,22 +204,24 @@ button {
 .state-page__primary {
   padding: 12px 20px;
   border-radius: 999px;
-  color: #0a1f18;
-  background: linear-gradient(120deg, rgba(121, 255, 203, 0.92), rgba(77, 217, 191, 0.88));
+  color: #2d0f1d;
+  background: linear-gradient(120deg, rgba(255, 143, 183, 0.92), rgba(255, 95, 149, 0.88));
 }
 
 .app-shell--desktop .page-card--wide {
-  width: min(100%, 1080px);
+  width: 100%;
 }
 
 .app-shell--mobile .page-shell {
-  place-items: stretch;
+  justify-items: stretch;
+  align-items: start;
   padding: 14px;
+  padding-top: 14px;
 }
 
 .app-shell--mobile .page-shell__cover {
-  opacity: 0.22;
-  filter: blur(22px) saturate(0.8);
+  opacity: 0.78;
+  filter: blur(14px) saturate(0.88);
 }
 
 .app-shell--mobile .page-shell__content,

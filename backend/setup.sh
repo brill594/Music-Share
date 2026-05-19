@@ -427,7 +427,7 @@ write_http_only_conf() {
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 64m;
+    client_max_body_size 80m;
     root "${FRONTEND_DIST_DIR}";
     index index.html;
 
@@ -461,7 +461,7 @@ server {
         proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
     }
 
-    location ~ ^/(auth|upload|client|admin|track|stream|cover|docs|redoc)(/|$) {
+    location ~ ^/(auth|upload|client|admin|track|stream|cover|background|docs|redoc)(/|$) {
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -480,7 +480,7 @@ EOF
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 64m;
+    client_max_body_size 80m;
 
     location = ${DOMAIN_CHECK_PATH} {
         default_type text/plain;
@@ -520,7 +520,7 @@ write_https_conf() {
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 64m;
+    client_max_body_size 80m;
 
     location ^~ /.well-known/acme-challenge/ {
         root "${ACME_WEBROOT}";
@@ -536,7 +536,7 @@ server {
 server {
     listen ${PUBLIC_HTTPS_PORT} ssl http2;
     server_name ${domain};
-    client_max_body_size 64m;
+    client_max_body_size 80m;
     root "${FRONTEND_DIST_DIR}";
     index index.html;
 
@@ -566,7 +566,7 @@ server {
         proxy_pass http://${BACKEND_UPSTREAM_HOST}:${BACKEND_UPSTREAM_PORT};
     }
 
-    location ~ ^/(auth|upload|client|admin|track|stream|cover|docs|redoc)(/|$) {
+    location ~ ^/(auth|upload|client|admin|track|stream|cover|background|docs|redoc)(/|$) {
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -585,7 +585,7 @@ EOF
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 64m;
+    client_max_body_size 80m;
 
     location ^~ /.well-known/acme-challenge/ {
         root "${ACME_WEBROOT}";
@@ -601,7 +601,7 @@ server {
 server {
     listen ${PUBLIC_HTTPS_PORT} ssl http2;
     server_name ${domain};
-    client_max_body_size 64m;
+    client_max_body_size 80m;
 
     ssl_certificate "${cert_dir}/fullchain.pem";
     ssl_certificate_key "${cert_dir}/privkey.pem";

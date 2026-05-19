@@ -45,6 +45,13 @@ def _get_optional_str(name: str) -> str | None:
     return value or None
 
 
+def _get_csv(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name)
+    if raw is None:
+        return ()
+    return tuple(value.strip().rstrip("/") for value in raw.split(",") if value.strip())
+
+
 @dataclass(slots=True)
 class Settings:
     data_root: Path
@@ -62,6 +69,7 @@ class Settings:
     max_duration_ms: int = 43_200_000
     public_api_base_url: str | None = None
     public_share_base_url: str | None = None
+    cors_allowed_origins: tuple[str, ...] = ()
     internal_media_prefix: str = "/internal-media"
     use_x_accel_redirect: bool = True
     session_cookie_name: str = "music_share_session"
@@ -99,10 +107,29 @@ class Settings:
         _chmod_if_possible(self.storage_root, 0o755)
 
 
+def _read_runtime_secrets(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def load_settings() -> Settings:
     data_root = Path(
         _get_optional_str("MUSIC_SHARE_DATA_ROOT") or BASE_DIR / "data"
     ).expanduser().resolve()
+    runtime_secret_path = Path(
+        _get_optional_str("MUSIC_SHARE_RUNTIME_SECRET_PATH")
+        or data_root / "runtime-secrets.json"
+    ).expanduser().resolve()
+    runtime_secrets = _read_runtime_secrets(runtime_secret_path)
+    user_password_from_env = _get_optional_str("MUSIC_SHARE_USER_PASSWORD")
+    admin_password_from_env = _get_optional_str("MUSIC_SHARE_ADMIN_PASSWORD")
+    user_password = user_password_from_env or str(runtime_secrets.get("user_password") or secrets.token_urlsafe(18))
+    admin_password = admin_password_from_env or str(runtime_secrets.get("admin_password") or secrets.token_urlsafe(18))
     settings = Settings(
         data_root=data_root,
         database_path=Path(
@@ -112,14 +139,9 @@ def load_settings() -> Settings:
         storage_root=Path(
             _get_optional_str("MUSIC_SHARE_STORAGE_ROOT") or data_root / "storage"
         ).expanduser().resolve(),
-        runtime_secret_path=Path(
-            _get_optional_str("MUSIC_SHARE_RUNTIME_SECRET_PATH")
-            or data_root / "runtime-secrets.json"
-        ).expanduser().resolve(),
-        user_password=_get_optional_str("MUSIC_SHARE_USER_PASSWORD")
-        or secrets.token_urlsafe(18),
-        admin_password=_get_optional_str("MUSIC_SHARE_ADMIN_PASSWORD")
-        or secrets.token_urlsafe(18),
+        runtime_secret_path=runtime_secret_path,
+        user_password=user_password,
+        admin_password=admin_password,
         session_ttl_seconds=_get_int("MUSIC_SHARE_SESSION_TTL_SECONDS", 86_400),
         share_default_ttl_seconds=_get_int(
             "MUSIC_SHARE_SHARE_DEFAULT_TTL_SECONDS", 86_400
@@ -139,6 +161,7 @@ def load_settings() -> Settings:
         max_duration_ms=_get_int("MUSIC_SHARE_MAX_DURATION_MS", 43_200_000),
         public_api_base_url=_get_optional_str("MUSIC_SHARE_PUBLIC_API_BASE_URL"),
         public_share_base_url=_get_optional_str("MUSIC_SHARE_PUBLIC_SHARE_BASE_URL"),
+        cors_allowed_origins=_get_csv("MUSIC_SHARE_CORS_ALLOWED_ORIGINS"),
         internal_media_prefix=_get_optional_str("MUSIC_SHARE_INTERNAL_MEDIA_PREFIX")
         or "/internal-media",
         use_x_accel_redirect=_get_bool("MUSIC_SHARE_USE_X_ACCEL_REDIRECT", True),
@@ -158,17 +181,29 @@ def load_settings() -> Settings:
         ),
     )
     settings.ensure_paths()
-    _write_runtime_secrets(settings)
+    if user_password_from_env is None or admin_password_from_env is None:
+        _write_runtime_secrets(
+            settings,
+            include_user_password=user_password_from_env is None,
+            include_admin_password=admin_password_from_env is None,
+        )
     return settings
 
 
-def _write_runtime_secrets(settings: Settings) -> None:
-    payload = {
+def _write_runtime_secrets(
+    settings: Settings,
+    *,
+    include_user_password: bool,
+    include_admin_password: bool,
+) -> None:
+    payload: dict[str, object] = {
         "generated_at": to_iso(utcnow()),
-        "user_password": settings.user_password,
-        "admin_password": settings.admin_password,
         "session_ttl_seconds": settings.session_ttl_seconds,
     }
+    if include_user_password:
+        payload["user_password"] = settings.user_password
+    if include_admin_password:
+        payload["admin_password"] = settings.admin_password
     settings.runtime_secret_path.parent.mkdir(parents=True, exist_ok=True)
     settings.runtime_secret_path.write_text(
         json.dumps(payload, ensure_ascii=True, indent=2),
@@ -176,6 +211,6 @@ def _write_runtime_secrets(settings: Settings) -> None:
     )
     _chmod_if_possible(settings.runtime_secret_path, 0o600)
     LOGGER.warning(
-        "Runtime passwords written to %s. Move them to environment variables before production.",
+        "Generated runtime passwords written to %s. Move them to environment variables before production.",
         settings.runtime_secret_path,
     )

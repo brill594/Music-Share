@@ -16,14 +16,15 @@ class ShareTileService : TileService() {
     override fun onClick() {
         super.onClick()
         ShareForegroundService.start(this)
-        refreshTile(forceProcessing = true)
+        refreshTile()
     }
 
-    private fun refreshTile(forceProcessing: Boolean = false) {
+
+    private fun refreshTile() {
         val tile = qsTile ?: return
         val stateStore = (application as MusicShareApplication).container.stateStore
         val appState = runBlocking { stateStore.read() }
-        val processing = forceProcessing || appState.runtime.isProcessing
+        val processing = appState.runtime.isProcessing
         when {
             processing -> {
                 tile.state = Tile.STATE_ACTIVE

@@ -22,6 +22,94 @@ import kotlinx.coroutines.withContext
 class FfmpegAudioTranscoder(
     private val context: Context,
 ) {
+    suspend fun extractEmbeddedArtwork(sourceUri: Uri): ExtractedArtwork? = withContext(Dispatchers.IO) {
+        val stagedInputFile = File.createTempFile(
+            "music-share-artwork-input-${UUID.randomUUID()}",
+            ".source",
+            context.cacheDir,
+        )
+        val outputFile = File.createTempFile(
+            "music-share-artwork-${UUID.randomUUID()}",
+            ".png",
+            context.cacheDir,
+        )
+        copySourceToLocalFile(sourceUri, stagedInputFile)
+        val arguments = listOf(
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            stagedInputFile.absolutePath,
+            "-map",
+            "0:v:0",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "png",
+            outputFile.absolutePath,
+        )
+        Log.i(
+            logTag,
+            "Starting artwork extraction sourceUri=$sourceUri stagedInput=${stagedInputFile.absolutePath} " +
+                "stagedBytes=${stagedInputFile.length()} output=${outputFile.absolutePath}",
+        )
+
+        var sessionId = -1L
+        var lastLogLine = ""
+
+        try {
+            val session = suspendCancellableCoroutine<FFmpegSession> { continuation ->
+                val runningSession = FFmpegKit.executeWithArgumentsAsync(
+                    arguments.toTypedArray(),
+                    { completedSession ->
+                        if (continuation.isActive) {
+                            continuation.resume(completedSession)
+                        }
+                    },
+                    { log ->
+                        val line = log.message?.trim().orEmpty()
+                        if (line.isNotBlank()) {
+                            lastLogLine = line
+                            Log.d(logTag, "ffmpeg artwork: $line")
+                        }
+                    },
+                    null,
+                )
+                sessionId = runningSession.sessionId
+                continuation.invokeOnCancellation {
+                    if (sessionId >= 0) {
+                        FFmpegKit.cancel(sessionId)
+                    }
+                    outputFile.delete()
+                    stagedInputFile.delete()
+                }
+            }
+
+            if (!ReturnCode.isSuccess(session.returnCode)) {
+                outputFile.delete()
+                Log.w(
+                    logTag,
+                    "Artwork extraction failed rc=${session.returnCode} failStack=${session.failStackTrace} lastLog=$lastLogLine",
+                )
+                return@withContext null
+            }
+            if (!outputFile.exists() || outputFile.length() <= 0L) {
+                outputFile.delete()
+                Log.i(logTag, "Artwork extraction produced no output file.")
+                return@withContext null
+            }
+
+            Log.i(logTag, "Artwork extraction completed outputBytes=${outputFile.length()}")
+            ExtractedArtwork(
+                file = outputFile,
+                mimeType = "image/png",
+            )
+        } finally {
+            stagedInputFile.delete()
+        }
+    }
+
     suspend fun transcode(
         sourceUri: Uri,
         durationMs: Long,
@@ -189,6 +277,11 @@ class FfmpegAudioTranscoder(
     data class TranscodeResult(
         val file: File,
         val audioMimeType: String,
+    )
+
+    data class ExtractedArtwork(
+        val file: File,
+        val mimeType: String,
     )
 
     data class TargetAudioSpec(

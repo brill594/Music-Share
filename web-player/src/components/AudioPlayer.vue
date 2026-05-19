@@ -51,7 +51,7 @@ const progressPercent = computed(() => {
 });
 
 const sliderStyle = computed(() => ({
-  background: `linear-gradient(90deg, rgba(77, 217, 191, 0.96) 0%, rgba(121, 255, 203, 0.96) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) 100%)`,
+  background: `linear-gradient(90deg, rgba(255, 95, 149, 0.96) 0%, rgba(255, 143, 183, 0.96) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) ${progressPercent.value}%, rgba(255, 255, 255, 0.12) 100%)`,
 }));
 
 async function togglePlayback(): Promise<void> {
@@ -70,18 +70,6 @@ async function togglePlayback(): Promise<void> {
   } catch {
     isPlaying.value = false;
   }
-}
-
-function stopPlayback(): void {
-  const audio = audioRef.value;
-  if (!audio) {
-    return;
-  }
-
-  audio.pause();
-  audio.currentTime = 0;
-  currentTime.value = 0;
-  isPlaying.value = false;
 }
 
 function handleLoadedMetadata(): void {
@@ -188,10 +176,22 @@ onBeforeUnmount(() => {
 
     <div class="audio-player__footer">
       <div class="audio-player__controls">
-        <button class="audio-player__primary" type="button" @click="void togglePlayback()">
-          {{ isPlaying ? "暂停" : "播放" }}
+        <button
+          class="audio-player__primary audio-player__primary--icon"
+          type="button"
+          :aria-label="isPlaying ? '暂停' : '播放'"
+          @click="void togglePlayback()"
+        >
+          <span
+            v-if="!isPlaying"
+            class="audio-player__icon audio-player__icon--play"
+            aria-hidden="true"
+          ></span>
+          <span v-else class="audio-player__icon audio-player__icon--pause" aria-hidden="true">
+            <span></span>
+            <span></span>
+          </span>
         </button>
-        <button class="audio-player__ghost" type="button" @click="stopPlayback">停止</button>
       </div>
     </div>
   </section>
@@ -201,12 +201,14 @@ onBeforeUnmount(() => {
 .audio-player {
   display: grid;
   gap: 22px;
+  align-content: center;
   padding: 24px;
   border-radius: 24px;
   background:
-    linear-gradient(135deg, rgba(121, 255, 203, 0.10), transparent 40%),
-    rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    linear-gradient(135deg, rgba(255, 143, 183, 0.12), transparent 42%),
+    var(--track-page-panel-bg, rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 0 0 1px var(--track-page-panel-border, rgba(255, 255, 255, 0.06));
+  min-height: 348px;
 }
 
 .audio-player__native {
@@ -223,6 +225,8 @@ onBeforeUnmount(() => {
 .audio-player__title {
   margin: 0;
   font-size: clamp(1.4rem, 2vw, 1.9rem);
+  color: var(--text);
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .audio-player__modes {
@@ -234,8 +238,8 @@ onBeforeUnmount(() => {
 .audio-player__mode-button {
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--muted);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--track-page-label, var(--muted));
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
@@ -244,7 +248,7 @@ onBeforeUnmount(() => {
 }
 
 .audio-player__mode-button--active {
-  background: rgba(121, 255, 203, 0.18);
+  background: rgba(255, 143, 183, 0.2);
   color: var(--text);
 }
 
@@ -269,7 +273,7 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 50%;
   background: #e8fff8;
-  box-shadow: 0 0 0 5px rgba(121, 255, 203, 0.22);
+  box-shadow: 0 0 0 5px rgba(255, 143, 183, 0.22);
 }
 
 .audio-player__range::-moz-range-thumb {
@@ -278,14 +282,15 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: 50%;
   background: #e8fff8;
-  box-shadow: 0 0 0 5px rgba(121, 255, 203, 0.22);
+  box-shadow: 0 0 0 5px rgba(255, 143, 183, 0.22);
 }
 
 .audio-player__times {
   display: flex;
   justify-content: space-between;
-  color: var(--muted);
+  color: var(--text);
   font-size: 0.92rem;
+  text-shadow: var(--track-page-heading-shadow, none);
 }
 
 .audio-player__footer {
@@ -295,29 +300,61 @@ onBeforeUnmount(() => {
 
 .audio-player__controls {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
 }
 
-.audio-player__primary,
-.audio-player__ghost {
+.audio-player__primary {
   min-width: 110px;
-  padding: 12px 18px;
+  padding: 12px 26px;
   border-radius: 999px;
   color: var(--text);
 }
 
 .audio-player__primary {
-  background: linear-gradient(120deg, rgba(121, 255, 203, 0.90), rgba(77, 217, 191, 0.90));
-  color: #0a1f18;
+  background: linear-gradient(120deg, rgba(255, 194, 217, 0.94), rgba(255, 164, 201, 0.92));
+  color: #2d0f1d;
 }
 
-.audio-player__ghost {
-  background: rgba(255, 255, 255, 0.06);
+.audio-player__primary--icon {
+  width: 92px;
+  min-width: 92px;
+  height: 92px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  box-shadow: 0 16px 32px rgba(255, 164, 201, 0.16);
+}
+
+.audio-player__icon {
+  display: inline-block;
+}
+
+.audio-player__icon--play {
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  border-top: 15px solid transparent;
+  border-bottom: 15px solid transparent;
+  border-left: 24px solid #ffffff;
+}
+
+.audio-player__icon--pause {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.audio-player__icon--pause span {
+  width: 9px;
+  height: 30px;
+  border-radius: 999px;
+  background: #ffffff;
 }
 
 .app-shell--mobile .audio-player {
   gap: 18px;
+  min-height: auto;
   padding: 20px;
   border-radius: 20px;
 }
@@ -343,18 +380,27 @@ onBeforeUnmount(() => {
 }
 
 .app-shell--mobile .audio-player__controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.app-shell--mobile .audio-player__primary,
-.app-shell--mobile .audio-player__ghost {
-  min-width: 0;
+  display: flex;
+  justify-content: center;
   width: 100%;
 }
 
 .app-shell--mobile .audio-player__primary {
-  color: #0a1f18;
+  min-width: 0;
+  width: 84px;
+  height: 84px;
+  color: #ffffff;
+  margin-inline: auto;
+}
+
+.app-shell--desktop .audio-player {
+  padding-block: 30px;
+}
+
+.app-shell--desktop .audio-player__timeline,
+.app-shell--desktop .audio-player__footer {
+  width: min(100%, 460px);
+  justify-self: center;
 }
 
 @media (max-width: 720px) {

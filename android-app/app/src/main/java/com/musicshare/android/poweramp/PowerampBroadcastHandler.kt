@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import com.musicshare.android.artwork.AlbumArtworkRepository
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.util.DocumentUriResolver
+import com.musicshare.android.tile.TileStateBridge
 import com.musicshare.android.util.nowIso
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -15,6 +17,7 @@ class PowerampBroadcastHandler(
     private val context: Context,
     private val stateStore: AppStateStore,
     private val documentUriResolver: DocumentUriResolver,
+    private val albumArtworkRepository: AlbumArtworkRepository,
     private val appScope: CoroutineScope,
 ) {
     fun handle(intent: Intent, onFinished: (() -> Unit)? = null) {
@@ -38,6 +41,8 @@ class PowerampBroadcastHandler(
                     stateStore.update { state ->
                         state.copy(latestTrack = parsed)
                     }
+                    requestGlanceRefresh()
+                    applyAlbumArtwork(parsed)
                 } else {
                     Log.d(logTag, "Ignored action=${intent.action} because no usable snapshot was produced")
                 }
@@ -84,6 +89,12 @@ class PowerampBroadcastHandler(
 
         val resolvedUri = documentUriResolver.resolve(treeUri, powerampPath)?.toString().orEmpty()
         val isReadable = resolvedUri.isNotBlank() && documentUriResolver.isReadable(context, resolvedUri)
+        val sameTrack = existing != null && (
+            existing.powerampPath == powerampPath ||
+                trackId.isNotBlank() && existing.trackId == trackId
+            )
+        val previousArtUri = if (sameTrack) existing?.artUri.orEmpty() else ""
+        val previousArtworkColor = if (sameTrack) existing?.artworkColorArgb ?: 0L else 0L
         return CurrentTrackSnapshot(
             powerampPath = powerampPath,
             documentUri = resolvedUri,
@@ -91,7 +102,8 @@ class PowerampBroadcastHandler(
             artist = artist ?: existing?.artist.orEmpty(),
             album = album ?: existing?.album.orEmpty(),
             durationMs = durationMs,
-            artUri = existing?.artUri.orEmpty(),
+            artUri = previousArtUri,
+            artworkColorArgb = previousArtworkColor,
             trackId = trackId,
             playbackState = playbackState,
             updatedAt = updatedAt,
@@ -99,6 +111,61 @@ class PowerampBroadcastHandler(
         )
     }
 
+    private suspend fun applyAlbumArtwork(snapshot: CurrentTrackSnapshot) {
+        val artworkSnapshot = attachAlbumArtwork(snapshot)
+        if (
+            artworkSnapshot.artUri == snapshot.artUri &&
+            artworkSnapshot.artworkColorArgb == snapshot.artworkColorArgb
+        ) {
+            return
+        }
+        var applied = false
+        stateStore.update { state ->
+            val latest = state.latestTrack
+            if (latest != null && sameTrack(latest, snapshot)) {
+                applied = true
+                state.copy(
+                    latestTrack = latest.copy(
+                        artUri = artworkSnapshot.artUri,
+                        artworkColorArgb = artworkSnapshot.artworkColorArgb,
+                    ),
+                )
+            } else {
+                state
+            }
+        }
+        if (applied) {
+            requestGlanceRefresh()
+        }
+    }
+
+    private fun sameTrack(left: CurrentTrackSnapshot, right: CurrentTrackSnapshot): Boolean {
+        if (left.trackId.isNotBlank() && right.trackId.isNotBlank()) {
+            return left.trackId == right.trackId
+        }
+        return left.powerampPath.isNotBlank() && left.powerampPath == right.powerampPath
+    }
+
+    private fun requestGlanceRefresh() {
+        TileStateBridge.requestRefresh(context)
+    }
+
+    private suspend fun attachAlbumArtwork(snapshot: CurrentTrackSnapshot): CurrentTrackSnapshot {
+        if (!snapshot.isResolvable) {
+            return snapshot.copy(artUri = "", artworkColorArgb = 0L)
+        }
+        if (albumArtworkRepository.hasUsableArtwork(snapshot)) {
+            return snapshot
+        }
+        val artwork = albumArtworkRepository.extract(snapshot)
+            ?: return snapshot.copy(artUri = "", artworkColorArgb = 0L)
+        return snapshot.copy(
+            artUri = artwork.artUri,
+            artworkColorArgb = artwork.artworkColorArgb,
+        )
+    }
+
+    @Suppress("DEPRECATION")
     private fun resolvePlaybackState(intent: Intent): String {
         val state = intent.extras?.get(PowerampContract.extraState) as? Int
         val paused = intent.extras?.get(PowerampContract.extraPaused) as? Boolean
@@ -111,11 +178,13 @@ class PowerampBroadcastHandler(
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun pickString(intent: Intent, bundle: Bundle?, key: String): String? {
         return intent.extras?.get(key) as? String
             ?: bundle?.get(key) as? String
     }
 
+    @Suppress("DEPRECATION")
     private fun pickLong(intent: Intent, bundle: Bundle?, key: String): Long? {
         return when (val direct = intent.extras?.get(key)) {
             is Int -> direct.toLong()

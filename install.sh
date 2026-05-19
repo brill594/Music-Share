@@ -110,6 +110,14 @@ update_apt_cache() {
     APT_UPDATED="true"
 }
 
+
+ensure_python_version() {
+    python3 - <<'PY' || fail "python3 版本过低，请安装 Python 3.10 或更新版本"
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+}
+
 python_minor_venv_package() {
     python3 - <<'PY'
 import sys
@@ -512,6 +520,7 @@ main() {
     ensure_required_files
     install_system_dependencies
     require_command python3
+    ensure_python_version
     require_command node
     require_command npm
     require_command curl
