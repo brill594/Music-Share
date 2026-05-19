@@ -6,15 +6,19 @@ Music Share 是一套临时音频分享工具，包含：
 - 后端服务：鉴权、会话管理、分享查询、音频分发、过期清理
 - Web Player：公开试听页，按分享码展示歌曲信息并播放音频
 
-当前部署路径已经统一为裸金属服务器部署：`FastAPI + SQLite + 本地文件系统 + Nginx` 提供 API 和受控媒体分发，`web-player/dist` 由同一个 Nginx 站点提供静态页面。
+当前仓库同时支持两种部署形态：
+
+- 裸金属：`backend/` 使用 `FastAPI + SQLite + 本地文件系统 + Nginx`，根目录 `install.sh` 会构建 `web-player/dist` 并同源部署前后端。
+- Cloudflare Worker：`worker-backend/` 使用 `Workers + D1 + R2`，`web-player/` 可通过 `VITE_API_BASE_URL` 部署到 Cloudflare Pages 并访问 Worker API。
 
 ## 仓库结构
 
 - `android-app/` Android 客户端
-- `backend/` FastAPI 后端、SQLite/本地文件存储、Nginx/Certbot 配置脚本
+- `backend/` 裸金属 FastAPI 后端、SQLite/本地文件存储、Nginx/Certbot 配置脚本
+- `worker-backend/` Cloudflare Worker 后端、D1 migrations、Wrangler 配置
 - `web-player/` Vue 3 + Vite 公开试听前端
-- `install.sh` Linux 服务器一键安装脚本，会安装后端并构建前端
-- `start.sh` 已部署 `systemd` 服务的启动/停止/查看日志脚本
+- `install.sh` 裸金属 Linux 服务器一键安装脚本，会安装 `backend/` 并构建前端
+- `start.sh` 裸金属已部署 `systemd` 服务的启动/停止/查看日志脚本
 
 ## 核心能力
 
@@ -28,7 +32,7 @@ Music Share 是一套临时音频分享工具，包含：
 
 ## 本地开发
 
-后端：
+裸金属后端：
 
 ```bash
 cd backend
@@ -36,6 +40,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 uvicorn app.asgi:app --host 127.0.0.1 --port 2087
+```
+
+Worker 后端：
+
+```bash
+cd worker-backend
+npm install
+npm run dev
 ```
 
 Web Player：
@@ -46,7 +58,7 @@ npm install
 npm run dev
 ```
 
-如果没有配置 `VITE_API_BASE_URL`，Web Player 会使用当前页面同源地址作为 API 根地址；这也是裸金属部署的默认方式。
+如果没有配置 `VITE_API_BASE_URL`，Web Player 会使用当前页面同源地址作为 API 根地址，适合裸金属同源部署。部署到 Cloudflare Pages 时应显式配置 `VITE_API_BASE_URL` 指向 Worker API。
 
 Android：
 
@@ -55,32 +67,20 @@ cd android-app
 ./gradlew :app:assembleDebug
 ```
 
-## 服务器部署
+## 部署
 
-根目录提供了面向 Linux 服务器的部署脚本：
+裸金属部署：
 
 ```bash
 sudo bash ./install.sh
 ```
 
-安装脚本会自动完成：
+安装脚本会安装 `backend/`、构建 `web-player/dist`、配置 Nginx/证书、安装 `music-share-backend.service` 和证书续期 timer。
 
-- 检查并安装 Python、Node.js、Nginx、Certbot 等基础依赖
-- 创建后端虚拟环境并安装 Python 依赖
-- 安装前端依赖并构建 `web-player/dist`
-- 创建 `music-share` 系统用户
-- 准备运行数据目录，默认是 `/var/lib/music-share`
-- 调用 `backend/setup.sh` 配置 Nginx、证书和公开地址
-- 安装 `music-share-backend.service`
-- 安装并启用 Certbot 自动续期 timer
+Cloudflare Worker + Pages 部署：
 
-部署完成后通过根目录脚本管理服务：
+- `worker-backend/wrangler.toml` 配置 Worker、D1、R2 和 Cron。
+- `.github/workflows/deploy-worker.yml` 部署 Worker 并应用 D1 migrations。
+- `.github/workflows/deploy-web-player.yml` 构建并部署 `web-player/` 到 Cloudflare Pages。
 
-```bash
-sudo bash ./start.sh
-sudo bash ./start.sh status
-sudo bash ./start.sh logs
-sudo bash ./start.sh stop
-```
-
-完整部署说明见 `DEPLOYMENT.md`。后端细节见 `backend/README.md`，Web Player 细节见 `web-player/README.md`。
+完整部署说明见 `DEPLOYMENT.md`。裸金属后端细节见 `backend/README.md`，Worker 后端细节见 `worker-backend/README.md`，Web Player 细节见 `web-player/README.md`。
