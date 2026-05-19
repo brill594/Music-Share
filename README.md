@@ -83,4 +83,6 @@ Cloudflare Worker + Pages 部署：
 - `.github/workflows/deploy-worker.yml` 部署 Worker 并应用 D1 migrations。
 - `.github/workflows/deploy-web-player.yml` 构建并部署 `web-player/` 到 Cloudflare Pages。
 
+从旧 Worker-only 版本升级时，先看 `DEPLOYMENT.md` 的“从旧 Worker-only 版本迁移”：继续使用 Cloudflare 时迁到 `worker-backend/` 并复用原 D1/R2；切换裸金属时需要新部署验证后再切流量。
+
 完整部署说明见 `DEPLOYMENT.md`。裸金属后端细节见 `backend/README.md`，Worker 后端细节见 `worker-backend/README.md`，Web Player 细节见 `web-player/README.md`。

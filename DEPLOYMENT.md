@@ -7,6 +7,59 @@
 
 两种后端实现保持 Android App 和 Web Player 使用的 API 路径与主要响应字段兼容。
 
+## 从旧 Worker-only 版本迁移
+
+旧版本把 Cloudflare Worker 后端直接放在 `backend/`，新版本为了同时支持裸金属和 Worker，把两个后端拆开：
+
+- `backend/`：裸金属 FastAPI 后端，只用于 Linux 服务器部署。
+- `worker-backend/`：Cloudflare Worker 后端，继续使用 Workers + D1 + R2。
+- `web-player/`：两种部署共用；同源时不需要 `VITE_API_BASE_URL`，Cloudflare Pages 时必须配置 `VITE_API_BASE_URL` 指向 Worker API。
+
+如果你只是从老版本 Worker-only 升级到新版本并继续使用 Cloudflare：
+
+1. 拉取新代码后，不要再进入 `backend/` 执行 Wrangler 命令；改用 `worker-backend/`。
+2. 把旧 `backend/wrangler.toml` 中的 D1/R2 生产绑定复制到 `worker-backend/wrangler.toml`：
+   - `[[d1_databases]].database_name`
+   - `[[d1_databases]].database_id`
+   - `[[r2_buckets]].bucket_name`
+3. 保持 GitHub Secrets/Variables 不变：
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+   - `MUSIC_SHARE_USER_PASSWORD`
+   - `MUSIC_SHARE_ADMIN_PASSWORD`
+   - `MUSIC_SHARE_PUBLIC_API_BASE_URL`
+   - `MUSIC_SHARE_PUBLIC_SHARE_BASE_URL`
+   - `CLOUDFLARE_PAGES_PROJECT_NAME`
+   - `VITE_API_BASE_URL`
+4. 本地验证 Worker：
+
+   ```bash
+   cd worker-backend
+   npm install
+   npm run typecheck
+   npm test
+   ```
+
+5. 部署 Worker：
+
+   ```bash
+   cd worker-backend
+   npx wrangler d1 migrations apply MUSIC_SHARE_DB --remote
+   npm run deploy
+   ```
+
+6. 部署或触发 Pages 构建，确保 `VITE_API_BASE_URL` 仍指向 Worker API，例如 `https://api.example.com/`。
+
+继续使用 Worker 时，不需要迁移 D1/R2 数据；只要 `worker-backend/wrangler.toml` 指向原来的 D1 database 和 R2 bucket，已有分享、会话、对象仍由原 Cloudflare 资源承载。
+
+如果你要从 Worker-only 切换到裸金属：
+
+1. 先按“形态一：裸金属部署”安装并验证新服务器。
+2. 新裸金属后端使用 SQLite 和本地文件系统，不能直接读取 D1/R2；当前仓库没有自动 D1/R2 → SQLite/本地文件迁移脚本。
+3. 不要在验证前把 Android 或公开域名切到裸金属。先用测试域名完成登录、上传、播放、管理后台检查。
+4. 确认新部署可用后，再把 Android 后端地址、Web Player 公开入口或 DNS 切到裸金属站点。
+5. 旧 Worker/D1/R2 可以保留为回滚路径；确认不再需要旧分享后再清理 Cloudflare 资源。
+
 ## 形态一：裸金属部署
 
 目标是单台 Linux 服务器：

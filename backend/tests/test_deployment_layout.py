@@ -49,6 +49,10 @@ def test_docs_explain_worker_and_bare_metal_deployments() -> None:
     assert "Cloudflare Worker" in deployment_doc
     assert "worker-backend" in deployment_doc
     assert "backend/" in deployment_doc
+    assert "从旧 Worker-only 版本迁移" in deployment_doc
+    assert "backend/wrangler.toml" in deployment_doc
+    assert "worker-backend/wrangler.toml" in deployment_doc
+    assert "不需要迁移 D1/R2 数据" in deployment_doc
 
 
 def test_old_bare_metal_source_android_is_not_integrated() -> None:
