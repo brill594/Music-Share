@@ -3,8 +3,8 @@ package com.musicshare.android.tile
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import com.musicshare.android.MainActivity
 import com.musicshare.android.MusicShareApplication
+import com.musicshare.android.service.ShareForegroundService
 import kotlinx.coroutines.runBlocking
 
 class ShareTileService : TileService() {
@@ -15,18 +15,10 @@ class ShareTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        launchSharePrompt()
+        ShareForegroundService.start(this)
         refreshTile()
     }
 
-    private fun launchSharePrompt() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startActivityAndCollapse(MainActivity.shareWithPromptPendingIntent(this))
-        } else {
-            @Suppress("DEPRECATION")
-            startActivityAndCollapse(MainActivity.shareWithPromptIntent(this))
-        }
-    }
 
     private fun refreshTile() {
         val tile = qsTile ?: return

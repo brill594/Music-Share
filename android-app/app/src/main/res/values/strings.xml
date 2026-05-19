@@ -2,11 +2,10 @@
     <string name="app_name">Music Share</string>
     <string name="tile_label">分享音乐</string>
     <string name="notification_channel_name">音乐分享</string>
-    <string name="notification_channel_description">显示转码和上传进度</string>
-    <string name="notification_title_processing">正在分享当前歌曲</string>
-    <string name="notification_title_ready">分享已完成</string>
-    <string name="notification_title_failed">分享失败</string>
-    <string name="notification_action_share_again">重试分享</string>
+    <string name="notification_channel_description">显示常驻分享快捷按钮</string>
+    <string name="notification_title_shortcut">Music Share</string>
+    <string name="notification_body_shortcut">分享当前 Poweramp 歌曲</string>
+    <string name="notification_action_share_again">分享</string>
     <string name="widget_title">分享当前歌曲</string>
     <string name="widget_action_share">分享</string>
     <string name="widget_action_processing">处理中</string>

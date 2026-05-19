@@ -1,8 +1,6 @@
 package com.musicshare.android
 import android.Manifest
 
-import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -46,7 +44,10 @@ class MainActivity : ComponentActivity() {
         viewModel.uploadAdminBackground(uri)
     }
 
-    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            ShareForegroundService.showShortcutNotification(this)
+        }
         ShareForegroundService.start(this)
     }
 
@@ -92,47 +93,20 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        handleShareIntent(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleShareIntent(intent)
-    }
-
-    private fun handleShareIntent(intent: Intent?) {
-        if (intent?.action == actionStartShareWithPrompt) {
-            setIntent(Intent(this, MainActivity::class.java))
-            startShareWithNotificationPrompt()
+        if (canPostNotifications()) {
+            ShareForegroundService.showShortcutNotification(this)
         }
     }
 
     private fun startShareWithNotificationPrompt() {
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!canPostNotifications()) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
+            ShareForegroundService.showShortcutNotification(this)
             ShareForegroundService.start(this)
         }
     }
-
-    companion object {
-        private const val actionStartShareWithPrompt = "com.musicshare.android.action.START_SHARE_WITH_PROMPT"
-        private const val pendingSharePromptRequestCode = 2090
-
-        fun shareWithPromptIntent(context: Context): Intent =
-            Intent(context, MainActivity::class.java)
-                .setAction(actionStartShareWithPrompt)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
-
-        fun shareWithPromptPendingIntent(context: Context): PendingIntent = PendingIntent.getActivity(
-            context,
-            pendingSharePromptRequestCode,
-            shareWithPromptIntent(context),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }

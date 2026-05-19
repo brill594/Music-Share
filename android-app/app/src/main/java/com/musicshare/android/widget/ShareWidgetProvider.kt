@@ -6,9 +6,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.widget.RemoteViews
 import com.musicshare.android.MusicShareApplication
-import com.musicshare.android.MainActivity
 import com.musicshare.android.R
 import com.musicshare.android.data.PersistedAppState
+import com.musicshare.android.service.ShareForegroundService
 import kotlinx.coroutines.launch
 
 class ShareWidgetProvider : AppWidgetProvider() {
@@ -61,7 +61,7 @@ class ShareWidgetProvider : AppWidgetProvider() {
                 R.id.widgetAction,
                 context.getString(if (appState.runtime.isProcessing) R.string.widget_action_processing else R.string.widget_action_share),
             )
-            val shareIntent = MainActivity.shareWithPromptPendingIntent(context)
+            val shareIntent = ShareForegroundService.sharePendingIntent(context)
             views.setOnClickPendingIntent(R.id.widgetRoot, shareIntent)
             views.setOnClickPendingIntent(R.id.widgetAction, shareIntent)
             return views
