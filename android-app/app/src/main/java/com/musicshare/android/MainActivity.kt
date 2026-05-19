@@ -64,7 +64,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            MusicShareTheme {
+            MusicShareTheme(
+                albumArtSeedArgb = uiState.appState.latestTrack?.artworkColorArgb?.takeIf { it != 0L },
+            ) {
                 MusicShareScreen(
                     uiState = uiState,
                     snackbarHostState = snackbarHostState,

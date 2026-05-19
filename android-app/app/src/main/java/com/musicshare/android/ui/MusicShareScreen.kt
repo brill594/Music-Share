@@ -1,7 +1,14 @@
 package com.musicshare.android.ui
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,7 +38,9 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +49,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -54,6 +70,8 @@ import com.musicshare.android.network.ShareItemDto
 import com.musicshare.android.util.formatDisplayTime
 import com.musicshare.android.util.formatDurationLabel
 import com.musicshare.android.util.formatShareExpiryStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,61 +96,205 @@ fun MusicShareScreen(
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Music Share") },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                listOf("当前歌曲", "分享管理", "设置").forEachIndexed { index, label ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = { Text(label) },
+    AlbumArtworkBackground(artUri = uiState.appState.latestTrack?.artUri.orEmpty()) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = { Text("Music Share") },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+            ) {
+                TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent) {
+                    listOf("当前歌曲", "分享管理", "设置").forEachIndexed { index, label ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text(label) },
+                        )
+                    }
+                }
+                when (selectedTab) {
+                    0 -> CurrentTrackTab(
+                        appState = uiState.appState,
+                        onPickMusicTree = onPickMusicTree,
+                        onShareNow = onShareNow,
+                    )
+                    1 -> ShareManagementTab(
+                        appState = uiState.appState,
+                        clientShares = uiState.clientShares,
+                        adminShares = uiState.adminShares,
+                        adminBackground = uiState.adminBackground,
+                        isRefreshing = uiState.isRefreshing,
+                        onAuthenticateUser = onAuthenticateUser,
+                        onAuthenticateAdmin = onAuthenticateAdmin,
+                        onRefreshShares = onRefreshShares,
+                        onTerminateClientShare = onTerminateClientShare,
+                        onTerminateAdminShare = onTerminateAdminShare,
+                        onUploadAdminBackground = onUploadAdminBackground,
+                    )
+                    else -> SettingsTab(
+                        appState = uiState.appState,
+                        adminUsage = uiState.adminUsage,
+                        onExportConfig = onExportConfig,
+                        onImportConfigPreserveId = onImportConfigPreserveId,
+                        onImportConfigReplaceId = onImportConfigReplaceId,
+                        onSaveSettings = onSaveSettings,
+                        onSaveUsageLimits = onSaveUsageLimits,
+                        onClearSession = onClearSession,
                     )
                 }
-            }
-            when (selectedTab) {
-                0 -> CurrentTrackTab(
-                    appState = uiState.appState,
-                    onPickMusicTree = onPickMusicTree,
-                    onShareNow = onShareNow,
-                )
-                1 -> ShareManagementTab(
-                    appState = uiState.appState,
-                    clientShares = uiState.clientShares,
-                    adminShares = uiState.adminShares,
-                    adminBackground = uiState.adminBackground,
-                    isRefreshing = uiState.isRefreshing,
-                    onAuthenticateUser = onAuthenticateUser,
-                    onAuthenticateAdmin = onAuthenticateAdmin,
-                    onRefreshShares = onRefreshShares,
-                    onTerminateClientShare = onTerminateClientShare,
-                    onTerminateAdminShare = onTerminateAdminShare,
-                    onUploadAdminBackground = onUploadAdminBackground,
-                )
-                else -> SettingsTab(
-                    appState = uiState.appState,
-                    adminUsage = uiState.adminUsage,
-                    onExportConfig = onExportConfig,
-                    onImportConfigPreserveId = onImportConfigPreserveId,
-                    onImportConfigReplaceId = onImportConfigReplaceId,
-                    onSaveSettings = onSaveSettings,
-                    onSaveUsageLimits = onSaveUsageLimits,
-                    onClearSession = onClearSession,
-                )
             }
         }
     }
 }
+
+@Composable
+private fun AlbumArtworkBackground(
+    artUri: String,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    val artworkBitmap by produceState<ImageBitmap?>(initialValue = null, artUri, context) {
+        value = withContext(Dispatchers.IO) {
+            decodeArtworkBitmap(context, artUri)
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        artworkBitmap?.let { bitmap ->
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.blur(36.dp).fillMaxSize().alpha(0.56f),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.58f)),
+            )
+        }
+        content()
+    }
+}
+
+private fun decodeArtworkBitmap(context: Context, artUri: String) = runCatching {
+    if (artUri.isBlank()) return@runCatching null
+    val uri = Uri.parse(artUri)
+    val maxEdge = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        maxBackgroundBitmapEdge
+    } else {
+        maxFallbackBitmapEdge
+    }
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use { stream ->
+        BitmapFactory.decodeStream(stream, null, bounds)
+    }
+    val sampleSize = calculateArtworkSampleSize(bounds.outWidth, bounds.outHeight, maxEdge)
+    context.contentResolver.openInputStream(uri)?.use { stream ->
+        val decoded = BitmapFactory.decodeStream(
+            stream,
+            null,
+            BitmapFactory.Options().apply { inSampleSize = sampleSize },
+        ) ?: return@use null
+        val displayBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            decoded
+        } else {
+            boxBlur(decoded, fallbackBlurRadius).also { blurred ->
+                if (blurred !== decoded) decoded.recycle()
+            }
+        }
+        displayBitmap.asImageBitmap()
+    }
+}.getOrNull()
+
+private fun boxBlur(source: Bitmap, radius: Int): Bitmap {
+    if (radius <= 0 || source.width <= 1 || source.height <= 1) return source
+    val width = source.width
+    val height = source.height
+    val sourcePixels = IntArray(width * height)
+    val horizontalPixels = IntArray(sourcePixels.size)
+    val outputPixels = IntArray(sourcePixels.size)
+    source.getPixels(sourcePixels, 0, width, 0, 0, width, height)
+    blurHorizontal(sourcePixels, horizontalPixels, width, height, radius)
+    blurVertical(horizontalPixels, outputPixels, width, height, radius)
+    return Bitmap.createBitmap(outputPixels, width, height, Bitmap.Config.ARGB_8888)
+}
+
+private fun blurHorizontal(source: IntArray, target: IntArray, width: Int, height: Int, radius: Int) {
+    val diameter = radius * 2 + 1
+    for (y in 0 until height) {
+        val rowOffset = y * width
+        for (x in 0 until width) {
+            var alpha = 0
+            var red = 0
+            var green = 0
+            var blue = 0
+            for (delta in -radius..radius) {
+                val pixel = source[rowOffset + (x + delta).coerceIn(0, width - 1)]
+                alpha += (pixel ushr 24) and 0xff
+                red += (pixel ushr 16) and 0xff
+                green += (pixel ushr 8) and 0xff
+                blue += pixel and 0xff
+            }
+            target[rowOffset + x] = packArgb(alpha / diameter, red / diameter, green / diameter, blue / diameter)
+        }
+    }
+}
+
+private fun blurVertical(source: IntArray, target: IntArray, width: Int, height: Int, radius: Int) {
+    val diameter = radius * 2 + 1
+    for (y in 0 until height) {
+        for (x in 0 until width) {
+            var alpha = 0
+            var red = 0
+            var green = 0
+            var blue = 0
+            for (delta in -radius..radius) {
+                val pixel = source[(y + delta).coerceIn(0, height - 1) * width + x]
+                alpha += (pixel ushr 24) and 0xff
+                red += (pixel ushr 16) and 0xff
+                green += (pixel ushr 8) and 0xff
+                blue += pixel and 0xff
+            }
+            target[y * width + x] = packArgb(alpha / diameter, red / diameter, green / diameter, blue / diameter)
+        }
+    }
+}
+
+private fun packArgb(alpha: Int, red: Int, green: Int, blue: Int): Int =
+    (alpha.coerceIn(0, 255) shl 24) or
+        (red.coerceIn(0, 255) shl 16) or
+        (green.coerceIn(0, 255) shl 8) or
+        blue.coerceIn(0, 255)
+
+private fun calculateArtworkSampleSize(width: Int, height: Int, maxEdge: Int): Int {
+    if (width <= maxEdge && height <= maxEdge) return 1
+    var sampleSize = 1
+    var sampledWidth = width
+    var sampledHeight = height
+    while (sampledWidth > maxEdge || sampledHeight > maxEdge) {
+        sampleSize *= 2
+        sampledWidth = width / sampleSize
+        sampledHeight = height / sampleSize
+    }
+    return sampleSize.coerceAtLeast(1)
+}
+
+private const val maxBackgroundBitmapEdge = 1080
+private const val maxFallbackBitmapEdge = 360
+private const val fallbackBlurRadius = 12
 
 @Composable
 private fun CurrentTrackTab(
@@ -799,13 +961,12 @@ private fun HighlightCard(
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
         ),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.musicshare.android.artwork.AlbumArtworkRepository
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.network.MusicShareBackendRepository
 import com.musicshare.android.poweramp.PowerampBroadcastHandler
@@ -33,6 +34,7 @@ class AppContainer(private val application: Application) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val stateStore = AppStateStore(application)
     val documentUriResolver = DocumentUriResolver()
+    val albumArtworkRepository = AlbumArtworkRepository(application)
     val backendRepository = MusicShareBackendRepository(application, stateStore)
     val configTransferManager = ConfigTransferManager(application, stateStore)
     val shareCoordinator = ShareCoordinator(
@@ -40,11 +42,13 @@ class AppContainer(private val application: Application) {
         stateStore = stateStore,
         backendRepository = backendRepository,
         documentUriResolver = documentUriResolver,
+        albumArtworkRepository = albumArtworkRepository,
     )
     val powerampBroadcastHandler = PowerampBroadcastHandler(
         context = application,
         stateStore = stateStore,
         documentUriResolver = documentUriResolver,
+        albumArtworkRepository = albumArtworkRepository,
         appScope = appScope,
     )
     private val runtimePowerampReceiver =

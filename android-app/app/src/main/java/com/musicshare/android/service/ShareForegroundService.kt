@@ -46,7 +46,7 @@ class ShareForegroundService : Service() {
             return START_NOT_STICKY
         }
         running = true
-        startForeground(notificationId, buildShortcutNotification(this))
+        startForeground(notificationId, buildProgressNotification(this, RuntimeStatus(isProcessing = true, currentStage = "初始化中")))
         TileStateBridge.requestRefresh(this)
         ShareWidgetProvider.requestRefresh(this)
         val container = (application as MusicShareApplication).container
@@ -58,6 +58,9 @@ class ShareForegroundService : Service() {
                 .distinctUntilChanged()
                 .collect { runtime ->
                     if (running) {
+                        if (runtime.isProcessing) {
+                            showProgressNotification(runtime)
+                        }
                         refreshWidgetIfDue(runtime)
                     }
                 }
@@ -109,6 +112,15 @@ class ShareForegroundService : Service() {
     private suspend fun showToast(message: String) {
         withContext(Dispatchers.Main) {
             Toast.makeText(this@ShareForegroundService, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showProgressNotification(runtime: RuntimeStatus) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            notificationManager.notify(notificationId, buildProgressNotification(this, runtime))
+        } catch (_: SecurityException) {
+            // Android 13+ can deny notification posting; direct share still works from widget/tile.
         }
     }
 
@@ -173,6 +185,42 @@ class ShareForegroundService : Service() {
                     sharePendingIntent(context),
                 )
                 .build()
+
+        private fun buildProgressNotification(context: Context, runtime: RuntimeStatus): Notification {
+            val content = buildProgressContent(context, runtime)
+            val builder = NotificationCompat.Builder(context, notificationChannelId)
+                .setSmallIcon(R.drawable.ic_music_tile)
+                .setContentTitle(context.getString(R.string.notification_title_processing))
+                .setContentText(content)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+                .setContentIntent(sharePendingIntent(context))
+                .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setShowWhen(false)
+                .addAction(
+                    R.drawable.ic_music_tile,
+                    context.getString(R.string.notification_action_share_again),
+                    sharePendingIntent(context),
+                )
+            if (runtime.progressPercent in 0..100) {
+                builder.setProgress(100, runtime.progressPercent, false)
+            } else {
+                builder.setProgress(100, 0, true)
+            }
+            return builder.build()
+        }
+
+        private fun buildProgressContent(context: Context, runtime: RuntimeStatus): String = buildString {
+            append(runtime.currentStage.ifBlank { context.getString(R.string.notification_body_processing) })
+            if (runtime.progressPercent >= 0) {
+                append(' ')
+                append(runtime.progressPercent)
+                append('%')
+            }
+        }
 
         private fun createNotificationChannel(context: Context) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -79,10 +79,8 @@ class ShareWidgetProvider : AppWidgetProvider() {
                     }
                 }
             }
-            val track = appState.latestTrack
             return when {
-                track?.isResolvable == true -> track.displayTitle()
-                appState.hasMusicTreePermission() -> context.getString(R.string.widget_status_waiting_track)
+                appState.hasMusicTreePermission() -> context.getString(R.string.widget_status_ready)
                 else -> context.getString(R.string.widget_status_needs_setup)
             }
         }

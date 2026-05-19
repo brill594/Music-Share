@@ -5,11 +5,13 @@
     <string name="notification_channel_description">显示常驻分享快捷按钮</string>
     <string name="notification_title_shortcut">Music Share</string>
     <string name="notification_body_shortcut">分享当前 Poweramp 歌曲</string>
+    <string name="notification_title_processing">正在分享当前歌曲</string>
+    <string name="notification_body_processing">正在准备分享</string>
     <string name="notification_action_share_again">分享</string>
     <string name="widget_title">分享当前歌曲</string>
     <string name="widget_action_share">分享</string>
     <string name="widget_action_processing">处理中</string>
     <string name="widget_status_processing">正在准备分享</string>
-    <string name="widget_status_waiting_track">等待 Poweramp 当前曲目</string>
+    <string name="widget_status_ready">点按分享</string>
     <string name="widget_status_needs_setup">先打开 App 授权音乐目录</string>
 </resources>
