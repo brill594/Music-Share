@@ -48,6 +48,7 @@ def test_worker_assets_are_bound_to_web_player_dist() -> None:
     assert 'binding = "ASSETS"' in worker_config
     assert 'not_found_handling = "single-page-application"' in worker_config
     assert "run_worker_first = true" in worker_config
+    assert not (ROOT / "web-player" / "public" / "_redirects").exists()
 
 
 def test_docs_explain_worker_and_bare_metal_deployments() -> None:
