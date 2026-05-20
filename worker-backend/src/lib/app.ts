@@ -1,6 +1,6 @@
 import { AuthService, extractSessionKey } from "./auth";
 import type { ObjectStorage, ShareRepository } from "./contracts";
-import type { AppSettings, Env } from "./config";
+import type { AppSettings, AssetsBinding, Env } from "./config";
 import { loadSettings } from "./config";
 import { D1ShareRepository } from "./db";
 import { ApiError, isApiError } from "./errors";
@@ -59,6 +59,7 @@ interface AppContext {
   repository: ShareRepository;
   storage: ObjectStorage;
   usageService: ReturnType<typeof createUsageService>;
+  assets?: AssetsBinding;
   usageRecorder: RequestUsageAccumulator;
 }
 
@@ -204,6 +205,7 @@ function buildContext(env: Env, dependencies: AppDependencies = {}): AppContext 
         ? new R2ObjectStorage(env.MUSIC_SHARE_BUCKET, usageRecorder)
         : new InstrumentedObjectStorage(dependencies.storage, usageRecorder),
     usageService,
+    assets: env.ASSETS,
     usageRecorder,
   };
 }
@@ -603,6 +605,19 @@ async function handleUpdateAdminUsage(request: Request, context: AppContext): Pr
   return jsonResponse(serializeUsageSummary(await context.usageService.updateLimits(payload)));
 }
 
+const API_ROUTE_PREFIXES = new Set(["admin", "auth", "background", "client", "cover", "stream", "track", "upload"]);
+
+function isApiRoute(segments: string[]): boolean {
+  return segments.length > 0 && API_ROUTE_PREFIXES.has(segments[0] ?? "");
+}
+
+function serveWebPlayer(request: Request, context: AppContext): Promise<Response> | Response {
+  if (context.assets === undefined) {
+    return errorResponse(404, "Not Found");
+  }
+  return context.assets.fetch(request);
+}
+
 async function routeRequest(request: Request, context: AppContext): Promise<Response> {
   const url = new URL(request.url);
   const segments = url.pathname.split("/").filter(Boolean).map(decodePathSegment);
@@ -678,6 +693,9 @@ async function routeRequest(request: Request, context: AppContext): Promise<Resp
     segments[3] === "terminate"
   ) {
     return handleTerminateAdminTrack(request, context, segments[2]);
+  }
+  if (!isApiRoute(segments)) {
+    return serveWebPlayer(request, context);
   }
   return errorResponse(404, "Not Found");
 }

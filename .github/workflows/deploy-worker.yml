@@ -8,6 +8,7 @@ on:
     paths:
       - "worker-backend/**"
       - ".github/workflows/deploy-worker.yml"
+      - "web-player/**"
   workflow_dispatch:
 
 concurrency:
@@ -16,7 +17,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy Backend to Cloudflare Workers
+    name: Deploy Full Stack Worker
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,6 +52,18 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Web Player dependencies
+        working-directory: web-player
+        run: npm ci
+
+      - name: Type check Web Player
+        working-directory: web-player
+        run: npm run typecheck
+
+      - name: Build Web Player assets
+        working-directory: web-player
+        run: npm run build
 
       - name: Type check
         run: npm run typecheck

@@ -178,6 +178,19 @@ function createEnv(overrides: Partial<Env> = {}): Env {
   };
 }
 
+function createAssetBinding() {
+  const fetch = vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    return new Response(`<html><body>${path}</body></html>`, {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  });
+  return {
+    binding: { fetch },
+    fetch,
+  };
+}
+
 function createHarness(overrides: Partial<Env> = {}) {
   const env = createEnv(overrides);
   const repository = new MemoryRepository();
@@ -605,6 +618,29 @@ describe("Cloudflare Worker backend compatibility", () => {
     expect(updatedPayload.d1_rows_read_daily?.limit).toBe(12);
     expect(updatedPayload.d1_storage?.limit_gb).toBe(1.5);
     expect(updatedPayload.r2_storage_rolling_30d?.limit_gb_month).toBe(2.5);
+  });
+
+  it("serves the Web Player from the same Worker for non-API routes", async () => {
+    const assets = createAssetBinding();
+    const harness = createHarness({ ASSETS: assets.binding } as Partial<Env>);
+
+    const response = await harness.request({ path: "/share-code-123" });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(await response.text()).toContain("/share-code-123");
+    expect(assets.fetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps unknown API routes as JSON errors instead of serving the Web Player", async () => {
+    const assets = createAssetBinding();
+    const harness = createHarness({ ASSETS: assets.binding } as Partial<Env>);
+
+    const response = await harness.request({ path: "/admin/not-a-route" });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(assets.fetch).not.toHaveBeenCalled();
   });
 
   it("blocks uploads when configured usage limits are reached", async () => {

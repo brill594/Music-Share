@@ -30,14 +30,24 @@ def test_cloudflare_worker_deployment_artifacts_are_available_separately() -> No
     assert (ROOT / "worker-backend" / "migrations" / "0001_init.sql").exists()
 
 
-def test_cloudflare_worker_workflows_target_worker_backend_and_pages() -> None:
+def test_cloudflare_worker_workflow_builds_frontend_and_deploys_single_worker() -> None:
     worker_workflow = read(".github/workflows/deploy-worker.yml")
-    pages_workflow = read(".github/workflows/deploy-web-player.yml")
 
+    assert not (ROOT / ".github" / "workflows" / "deploy-web-player.yml").exists()
     assert "working-directory: worker-backend" in worker_workflow
+    assert "working-directory: web-player" in worker_workflow
+    assert "npm run build" in worker_workflow
     assert "command: deploy" in worker_workflow
-    assert "VITE_API_BASE_URL" in pages_workflow
-    assert "command: pages deploy" in pages_workflow
+
+
+def test_worker_assets_are_bound_to_web_player_dist() -> None:
+    worker_config = read("worker-backend/wrangler.toml")
+
+    assert "[assets]" in worker_config
+    assert 'directory = "../web-player/dist"' in worker_config
+    assert 'binding = "ASSETS"' in worker_config
+    assert 'not_found_handling = "single-page-application"' in worker_config
+    assert "run_worker_first = true" in worker_config
 
 
 def test_docs_explain_worker_and_bare_metal_deployments() -> None:

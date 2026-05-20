@@ -1,8 +1,13 @@
 import type { D1Database, R2Bucket } from "./types";
 
+
+export interface AssetsBinding {
+  fetch(request: Request): Response | Promise<Response>;
+}
 export interface Env {
   MUSIC_SHARE_DB: D1Database;
   MUSIC_SHARE_BUCKET: R2Bucket;
+  ASSETS?: AssetsBinding;
   MUSIC_SHARE_USER_PASSWORD?: string;
   MUSIC_SHARE_ADMIN_PASSWORD?: string;
   MUSIC_SHARE_SESSION_TTL_SECONDS?: string;
