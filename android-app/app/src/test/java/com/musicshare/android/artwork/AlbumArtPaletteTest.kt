@@ -52,14 +52,16 @@ class AlbumArtPaletteTest {
     }
 
     @Test
-    fun appSurfaceTextStaysWhiteWhileButtonColorsFollowArtwork() {
+    fun appTextStaysWhiteWhileButtonUsesPowerampAccent() {
         listOf(false, true).forEach { darkTheme ->
             val tokens = deriveAlbumArtTokens(0xff3366ccL, darkTheme)
 
+            assertEquals(0xffffffff.toInt(), tokens.onPrimaryArgb.toInt())
+            assertEquals(0xffffffff.toInt(), tokens.onSecondaryArgb.toInt())
             assertEquals(0xffffffff.toInt(), tokens.onSurfaceArgb.toInt())
             assertEquals(0xffffffff.toInt(), tokens.onSurfaceVariantArgb.toInt())
             assertEquals(0xffffffff.toInt(), tokens.onBackgroundArgb.toInt())
-            assertTrue(blue(tokens.primaryArgb) > red(tokens.primaryArgb))
+            assertTrue(red(tokens.primaryArgb) > blue(tokens.primaryArgb))
         }
     }
 

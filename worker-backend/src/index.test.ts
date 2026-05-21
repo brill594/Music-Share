@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleRequest, runCleanup } from "./lib/app";
 import type { ShareRepository, ObjectStorage, StoredObject } from "./lib/contracts";
 import { effectiveStatus, type SessionRecord, type ShareRecord } from "./lib/models";
-import type { Env } from "./lib/config";
+import { loadSettings, type Env } from "./lib/config";
 import type { D1Database, R2Bucket } from "./lib/types";
 import { InMemoryUsageService } from "./lib/usage";
 
@@ -279,6 +279,10 @@ async function uploadSample(
 describe("Cloudflare Worker backend compatibility", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("defaults audio uploads to 200 MiB", () => {
+    expect(loadSettings(createEnv()).maxAudioUploadBytes).toBe(200 * 1024 * 1024);
   });
 
   it("supports upload, public queries, stream/cover responses, and client termination", async () => {

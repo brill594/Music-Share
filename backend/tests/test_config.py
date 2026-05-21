@@ -37,3 +37,14 @@ def test_mixed_env_password_writes_only_generated_secret(monkeypatch, tmp_path) 
 
     assert "user_password" not in payload
     assert payload["admin_password"] == settings.admin_password
+
+
+def test_default_audio_upload_limit_is_200_mib(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("MUSIC_SHARE_DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("MUSIC_SHARE_USER_PASSWORD", "user-from-env")
+    monkeypatch.setenv("MUSIC_SHARE_ADMIN_PASSWORD", "admin-from-env")
+    monkeypatch.delenv("MUSIC_SHARE_MAX_AUDIO_UPLOAD_BYTES", raising=False)
+
+    settings = load_settings()
+
+    assert settings.max_audio_upload_bytes == 200 * 1024 * 1024

@@ -427,7 +427,7 @@ write_http_only_conf() {
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 80m;
+    client_max_body_size 200m;
     root "${FRONTEND_DIST_DIR}";
     index index.html;
 
@@ -480,7 +480,7 @@ EOF
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 80m;
+    client_max_body_size 200m;
 
     location = ${DOMAIN_CHECK_PATH} {
         default_type text/plain;
@@ -520,7 +520,7 @@ write_https_conf() {
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 80m;
+    client_max_body_size 200m;
 
     location ^~ /.well-known/acme-challenge/ {
         root "${ACME_WEBROOT}";
@@ -536,7 +536,7 @@ server {
 server {
     listen ${PUBLIC_HTTPS_PORT} ssl http2;
     server_name ${domain};
-    client_max_body_size 80m;
+    client_max_body_size 200m;
     root "${FRONTEND_DIST_DIR}";
     index index.html;
 
@@ -585,7 +585,7 @@ EOF
 server {
     listen 80;
     server_name ${domain};
-    client_max_body_size 80m;
+    client_max_body_size 200m;
 
     location ^~ /.well-known/acme-challenge/ {
         root "${ACME_WEBROOT}";
@@ -601,7 +601,7 @@ server {
 server {
     listen ${PUBLIC_HTTPS_PORT} ssl http2;
     server_name ${domain};
-    client_max_body_size 80m;
+    client_max_body_size 200m;
 
     ssl_certificate "${cert_dir}/fullchain.pem";
     ssl_certificate_key "${cert_dir}/privkey.pem";

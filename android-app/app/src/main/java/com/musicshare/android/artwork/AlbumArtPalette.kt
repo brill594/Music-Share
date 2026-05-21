@@ -22,19 +22,17 @@ data class AlbumArtTokens(
 
 fun deriveAlbumArtTokens(seedArgb: Long, darkTheme: Boolean): AlbumArtTokens {
     val seed = opaque(seedArgb)
-    val primary = blend(seed, white, if (darkTheme) 0.52f else 0.48f)
-    val primaryContainer = blend(seed, black, if (darkTheme) 0.78f else 0.72f)
-    val secondary = blend(seed, white, if (darkTheme) 0.38f else 0.32f)
-    val surface = blend(seed, black, if (darkTheme) 0.88f else 0.82f)
-    val surfaceVariant = blend(seed, black, if (darkTheme) 0.80f else 0.74f)
-    val background = blend(seed, black, if (darkTheme) 0.92f else 0.86f)
+    val primaryContainer = blend(powerampOrange, black, 0.72f)
+    val surface = blend(seed, black, if (darkTheme) 0.90f else 0.86f)
+    val surfaceVariant = blend(seed, black, if (darkTheme) 0.84f else 0.80f)
+    val background = if (darkTheme) black else almostBlack
     return AlbumArtTokens(
-        primaryArgb = primary,
-        onPrimaryArgb = readableTextOn(primary),
+        primaryArgb = powerampOrange,
+        onPrimaryArgb = white,
         primaryContainerArgb = primaryContainer,
         onPrimaryContainerArgb = white,
-        secondaryArgb = secondary,
-        onSecondaryArgb = readableTextOn(secondary),
+        secondaryArgb = powerampSecondary,
+        onSecondaryArgb = white,
         surfaceArgb = surface,
         onSurfaceArgb = white,
         surfaceVariantArgb = surfaceVariant,
@@ -92,30 +90,6 @@ private fun blend(from: Long, to: Long, toAmount: Float): Long {
         blue = (shifted(from, 0) * fromAmount + shifted(to, 0) * clamped).roundToInt(),
     )
 }
-
-
-private fun readableTextOn(background: Long): Long =
-    if (contrastRatio(background, black) >= contrastRatio(background, white)) black else white
-
-private fun contrastRatio(first: Long, second: Long): Float {
-    val firstLuminance = relativeLuminance(first) + 0.05f
-    val secondLuminance = relativeLuminance(second) + 0.05f
-    return max(firstLuminance, secondLuminance) / min(firstLuminance, secondLuminance)
-}
-
-private fun relativeLuminance(argb: Long): Float {
-    val red = linearized(shifted(argb, 16) / 255f)
-    val green = linearized(shifted(argb, 8) / 255f)
-    val blue = linearized(shifted(argb, 0) / 255f)
-    return 0.2126f * red + 0.7152f * green + 0.0722f * blue
-}
-
-private fun linearized(channel: Float): Float =
-    if (channel <= 0.03928f) channel / 12.92f else Math.pow(
-        ((channel + 0.055f) / 1.055f).toDouble(),
-        2.4,
-    ).toFloat()
-
 private fun shifted(argb: Long, shift: Int): Int = ((argb ushr shift) and 0xffL).toInt()
 
 private fun argb(red: Int, green: Int, blue: Int): Long =
@@ -126,5 +100,8 @@ private fun argb(red: Int, green: Int, blue: Int): Long =
 
 private const val sampleEdge = 64
 private const val minOpaqueAlpha = 128
+private const val powerampOrange = 0xffc84e00L
+private const val powerampSecondary = 0xff6e5d50L
+private const val almostBlack = 0xff010101L
 private const val white = 0xffffffffL
 private const val black = 0xff000000L
