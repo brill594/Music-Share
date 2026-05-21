@@ -505,7 +505,7 @@ curl -X POST http://127.0.0.1:2087/admin/tracks/<share_code>/terminate \
 ### 上传限制
 
 - `MUSIC_SHARE_MAX_AUDIO_UPLOAD_BYTES`
-  - 默认：`67108864`，也就是 `64 MiB`
+  - 默认：`209715200`，也就是 `200 MiB`
 - `MUSIC_SHARE_MAX_COVER_UPLOAD_BYTES`
   - 默认：`8388608`，也就是 `8 MiB`
 - `MUSIC_SHARE_MAX_DURATION_MS`

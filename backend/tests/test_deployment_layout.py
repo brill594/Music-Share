@@ -17,8 +17,8 @@ def test_root_installer_builds_current_frontend_and_fastapi_backend() -> None:
     assert "npm run build" in install_script
     assert 'local default_dir="${SCRIPT_DIR}/../web-player/dist"' in setup_script
     assert "location ~ ^/(auth|upload|client|admin|track|stream|cover|background|docs|redoc)(/|$)" in setup_script
-    assert "client_max_body_size 80m" in setup_script
-    assert "client_max_body_size 80m" in read("backend/nginx.example.conf")
+    assert "client_max_body_size 200m" in setup_script
+    assert "client_max_body_size 200m" in read("backend/nginx.example.conf")
 
 
 def test_cloudflare_worker_deployment_artifacts_are_available_separately() -> None:

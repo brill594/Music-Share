@@ -182,7 +182,7 @@ private fun AlbumArtworkBackground(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.58f)),
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.38f)),
             )
         }
         content()
@@ -854,7 +854,7 @@ private fun ShareSection(
             items.forEach { item ->
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                     ),
                 ) {
                     Column(
@@ -961,7 +961,7 @@ private fun HighlightCard(
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
         ),
     ) {
         Column(

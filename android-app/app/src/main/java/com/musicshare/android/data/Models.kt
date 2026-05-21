@@ -166,7 +166,7 @@ data class PersistedAppState(
                 channels = transcode.channels.coerceIn(1, 2),
                 loudnessMode = loudnessMode,
                 maxDurationSeconds = transcode.maxDurationSeconds.coerceIn(30, 7_200),
-                maxOutputSizeMb = transcode.maxOutputSizeMb.coerceIn(2, 64),
+                maxOutputSizeMb = transcode.maxOutputSizeMb.coerceIn(2, 200),
             ),
             shareDefaults = shareDefaults.copy(
                 expireAfterSeconds = shareDefaults.expireAfterSeconds.coerceIn(60, 2_592_000),
