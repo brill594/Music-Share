@@ -10,6 +10,17 @@ import androidx.compose.ui.graphics.Color
 import com.musicshare.android.artwork.AlbumArtTokens
 import com.musicshare.android.artwork.deriveAlbumArtTokens
 
+internal val musicShareTextColor = Color.White
+
+internal const val appBackgroundAlpha = 0.60f
+internal const val artworkBackgroundOverlayAlpha = 0.24f
+internal const val highlightCardContainerAlpha = 0.46f
+internal const val shareItemContainerAlpha = 0.24f
+internal const val controlContainerAlpha = 0.20f
+internal const val disabledTextAlpha = 0.38f
+internal const val focusedControlAlpha = 0.72f
+internal const val unfocusedControlAlpha = 0.48f
+
 private val LightColors = darkColorScheme(
     primary = Color(0xFFC84E00),
     onPrimary = Color(0xFFFFFFFF),
@@ -17,11 +28,11 @@ private val LightColors = darkColorScheme(
     onPrimaryContainer = Color(0xFFFFFFFF),
     secondary = Color(0xFF6E5D50),
     onSecondary = Color(0xFFFFFFFF),
-    surface = Color(0xCC15100C),
+    surface = Color(0x9915100C),
     onSurface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xB3291A12),
+    surfaceVariant = Color(0x66291A12),
     onSurfaceVariant = Color(0xFFFFFFFF),
-    background = Color(0xCC000000),
+    background = Color(0x99000000),
     onBackground = Color(0xFFFFFFFF),
 )
 
@@ -32,11 +43,11 @@ private val DarkColors = darkColorScheme(
     onPrimaryContainer = Color(0xFFFFFFFF),
     secondary = Color(0xFF6E5D50),
     onSecondary = Color(0xFFFFFFFF),
-    surface = Color(0xCC15100C),
+    surface = Color(0x9915100C),
     onSurface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xB3291A12),
+    surfaceVariant = Color(0x66291A12),
     onSurfaceVariant = Color(0xFFFFFFFF),
-    background = Color(0xCC000000),
+    background = Color(0x99000000),
     onBackground = Color(0xFFFFFFFF),
 )
 
