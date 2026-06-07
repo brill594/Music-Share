@@ -14,6 +14,22 @@ import {
 
 const GLOBAL_BACKGROUND_MANIFEST_KEY = "settings/global-background.json";
 
+async function bodySizeBytes(body: BodyInit): Promise<number> {
+  if (body instanceof Blob) {
+    return body.size;
+  }
+  if (body instanceof ArrayBuffer) {
+    return body.byteLength;
+  }
+  if (ArrayBuffer.isView(body)) {
+    return body.byteLength;
+  }
+  if (typeof body === "string") {
+    return new TextEncoder().encode(body).byteLength;
+  }
+  return new Response(body).arrayBuffer().then((value) => value.byteLength);
+}
+
 export interface GlobalBackgroundConfig {
   path: string;
   mime: string;
@@ -33,7 +49,7 @@ export class R2ObjectStorage implements ObjectStorage {
     contentType: string,
     previousSizeHintBytes?: number | null,
   ): Promise<void> {
-    const sizeBytes = body instanceof ArrayBuffer ? body.byteLength : await new Response(body).arrayBuffer().then((value) => value.byteLength);
+    const sizeBytes = await bodySizeBytes(body);
     await this.bucket.put(key, body, {
       httpMetadata: {
         contentType,
@@ -116,9 +132,6 @@ export async function persistUploads(options: {
   audioFile: File;
   coverFile: File | null;
 }): Promise<ShareRecord> {
-  if (options.audioFile.size > options.settings.maxAudioUploadBytes) {
-    throw new ApiError(413, `Upload exceeds ${options.settings.maxAudioUploadBytes} bytes.`);
-  }
 
   const writtenKeys: Array<{ key: string; sizeBytes: number | null }> = [
     {
@@ -129,7 +142,7 @@ export async function persistUploads(options: {
   try {
     await options.storage.putObject(
       options.share.audio_path,
-      await options.audioFile.arrayBuffer(),
+      options.audioFile,
       options.share.audio_mime,
     );
 
@@ -146,16 +159,13 @@ export async function persistUploads(options: {
       allowed: options.settings.allowedImageMimeTypes,
       fieldName: "cover content_type",
     });
-    if (options.coverFile.size > options.settings.maxCoverUploadBytes) {
-      throw new ApiError(413, `Upload exceeds ${options.settings.maxCoverUploadBytes} bytes.`);
-    }
 
     const coverPath = `shares/${options.share.uuid}/cover${extensionForMime(coverMime)}`;
     writtenKeys.push({
       key: coverPath,
       sizeBytes: options.coverFile.size,
     });
-    await options.storage.putObject(coverPath, await options.coverFile.arrayBuffer(), coverMime);
+    await options.storage.putObject(coverPath, options.coverFile, coverMime);
     return {
       ...persistedAudio,
       cover_mime: coverMime,
@@ -244,16 +254,13 @@ export async function persistBackgroundUpload(options: {
     allowed: options.settings.allowedImageMimeTypes,
     fieldName: "background content_type",
   });
-  if (options.backgroundFile.size > options.settings.maxCoverUploadBytes) {
-    throw new ApiError(413, `Upload exceeds ${options.settings.maxCoverUploadBytes} bytes.`);
-  }
 
   const backgroundPath = `shares/${options.share.uuid}/background${extensionForMime(backgroundMime)}`;
   const previousSizeHint =
     options.share.background_path === backgroundPath ? options.share.background_bytes : null;
   await options.storage.putObject(
     backgroundPath,
-    await options.backgroundFile.arrayBuffer(),
+    options.backgroundFile,
     backgroundMime,
     previousSizeHint,
   );
@@ -325,9 +332,6 @@ export async function persistGlobalBackgroundUpload(options: {
     allowed: options.settings.allowedImageMimeTypes,
     fieldName: "background content_type",
   });
-  if (options.backgroundFile.size > options.settings.maxCoverUploadBytes) {
-    throw new ApiError(413, `Upload exceeds ${options.settings.maxCoverUploadBytes} bytes.`);
-  }
 
   const backgroundPath = `settings/background${extensionForMime(backgroundMime)}`;
   const config: GlobalBackgroundConfig = {
@@ -341,7 +345,7 @@ export async function persistGlobalBackgroundUpload(options: {
 
   await options.storage.putObject(
     backgroundPath,
-    await options.backgroundFile.arrayBuffer(),
+    options.backgroundFile,
     backgroundMime,
     options.previous?.path === backgroundPath ? options.previous.size : null,
   );

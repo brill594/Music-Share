@@ -362,7 +362,7 @@ def test_usage_storage_limit_blocks_admin_background_upload(test_client: TestCli
     assert background.json()["configured"] is False
 
 
-def test_oversized_background_replacement_preserves_existing_background(test_client: TestClient) -> None:
+def test_large_background_replacement_updates_existing_background(test_client: TestClient) -> None:
     admin_session = login(test_client, "admin-password")
     initial = test_client.post(
         "/admin/background",
@@ -372,17 +372,18 @@ def test_oversized_background_replacement_preserves_existing_background(test_cli
     assert initial.status_code == 200
     assert test_client.get("/background").content == b"old-background"
 
-    too_large = b"x" * (test_client.app.state.settings.max_cover_upload_bytes + 1)
+    large_background = b"x" * (8 * 1024 * 1024 + 1)
     replacement = test_client.post(
         "/admin/background",
         headers={"X-Session-Key": admin_session},
-        files={"background": ("background.jpg", too_large, "image/jpeg")},
+        files={"background": ("background.jpg", large_background, "image/jpeg")},
     )
-    assert replacement.status_code == 413
+    assert replacement.status_code == 200
+    assert replacement.json()["configured"] is True
 
     background = test_client.get("/background")
     assert background.status_code == 200
-    assert background.content == b"old-background"
+    assert background.content == large_background
     staged_files = list((test_client.app.state.settings.storage_root / "global-background").glob("staged-*"))
     assert staged_files == []
 

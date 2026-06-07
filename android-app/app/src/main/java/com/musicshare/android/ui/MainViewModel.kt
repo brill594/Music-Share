@@ -215,11 +215,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 messages.tryEmit("max_duration_seconds 必须是正整数。")
                 return@launch
             }
-            val maxOutputSizeMb = draft.maxOutputSizeMb.toIntOrNull()
-            if (maxOutputSizeMb == null || maxOutputSizeMb <= 0) {
-                messages.tryEmit("max_output_size_mb 必须是正整数。")
-                return@launch
-            }
 
             container.stateStore.update { state ->
                 state.copy(
@@ -242,7 +237,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         sampleRateHz = sampleRateHz,
                         channels = draft.channels,
                         maxDurationSeconds = maxDurationSeconds,
-                        maxOutputSizeMb = maxOutputSizeMb,
                     ),
                 )
             }

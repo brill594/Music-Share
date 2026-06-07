@@ -561,7 +561,7 @@ private fun SettingsTab(
 
         HighlightCard(
             title = "分享与转码",
-            body = "首版优先把上传闭环跑通。可直接切换预设，也可以手动调时长和大小限制。",
+            body = "首版优先把上传闭环跑通。可直接切换预设，也可以手动调时长和转码参数。",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -649,14 +649,6 @@ private fun SettingsTab(
                     value = draft.maxDurationSeconds,
                     onValueChange = { draft = draft.copy(maxDurationSeconds = it) },
                     label = { Text("max_duration_seconds") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = draft.maxOutputSizeMb,
-                    onValueChange = { draft = draft.copy(maxOutputSizeMb = it) },
-                    label = { Text("max_output_size_mb") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                 )

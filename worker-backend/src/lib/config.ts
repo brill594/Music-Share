@@ -13,8 +13,6 @@ export interface Env {
   MUSIC_SHARE_SESSION_TTL_SECONDS?: string;
   MUSIC_SHARE_SHARE_DEFAULT_TTL_SECONDS?: string;
   MUSIC_SHARE_SHARE_MAX_TTL_SECONDS?: string;
-  MUSIC_SHARE_MAX_AUDIO_UPLOAD_BYTES?: string;
-  MUSIC_SHARE_MAX_COVER_UPLOAD_BYTES?: string;
   MUSIC_SHARE_MAX_DURATION_MS?: string;
   MUSIC_SHARE_PUBLIC_API_BASE_URL?: string;
   MUSIC_SHARE_PUBLIC_SHARE_BASE_URL?: string;
@@ -27,8 +25,6 @@ export interface AppSettings {
   sessionTtlSeconds: number;
   shareDefaultTtlSeconds: number;
   shareMaxTtlSeconds: number;
-  maxAudioUploadBytes: number;
-  maxCoverUploadBytes: number;
   maxDurationMs: number;
   publicApiBaseUrl: string | null;
   publicShareBaseUrl: string | null;
@@ -73,8 +69,6 @@ export function loadSettings(env: Env): AppSettings {
     sessionTtlSeconds: getInt(env, "MUSIC_SHARE_SESSION_TTL_SECONDS", 86_400),
     shareDefaultTtlSeconds: getInt(env, "MUSIC_SHARE_SHARE_DEFAULT_TTL_SECONDS", 86_400),
     shareMaxTtlSeconds: getInt(env, "MUSIC_SHARE_SHARE_MAX_TTL_SECONDS", 2_592_000),
-    maxAudioUploadBytes: getInt(env, "MUSIC_SHARE_MAX_AUDIO_UPLOAD_BYTES", 200 * 1024 * 1024),
-    maxCoverUploadBytes: getInt(env, "MUSIC_SHARE_MAX_COVER_UPLOAD_BYTES", 8 * 1024 * 1024),
     maxDurationMs: getInt(env, "MUSIC_SHARE_MAX_DURATION_MS", 43_200_000),
     publicApiBaseUrl: getOptionalString(env, "MUSIC_SHARE_PUBLIC_API_BASE_URL"),
     publicShareBaseUrl: getOptionalString(env, "MUSIC_SHARE_PUBLIC_SHARE_BASE_URL"),

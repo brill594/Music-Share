@@ -145,7 +145,6 @@ class ShareCoordinator(
             sourceUri = sourceUri,
             fallbackTrack = track,
             maxDurationLimitMs = appState.transcode.maxDurationSeconds * 1_000L,
-            maxOutputBytes = appState.transcode.maxOutputSizeMb * 1024L * 1024L,
         )
         if (metadata.durationMs > metadata.maxDurationLimitMs) {
             throw UserVisibleException("曲目时长超过当前配置上限。")
@@ -162,11 +161,6 @@ class ShareCoordinator(
                 durationMs = metadata.durationMs,
                 transcodeConfig = appState.transcode,
             )
-        }
-        val maxBytes = metadata.maxOutputBytes
-        if (preparedAudio.file.length() > maxBytes) {
-            preparedAudio.file.delete()
-            throw UserVisibleException("音频文件超过当前配置的输出大小上限。")
         }
 
         updateRuntime(processing = true, stage = "提取封面", progressPercent = -1)
@@ -263,7 +257,6 @@ class ShareCoordinator(
         sourceUri: Uri,
         fallbackTrack: CurrentTrackSnapshot,
         maxDurationLimitMs: Long,
-        maxOutputBytes: Long,
     ): ExtractedMetadata {
         val retriever = MediaMetadataRetriever()
         return runCatching {
@@ -282,7 +275,6 @@ class ShareCoordinator(
                     ?: inferMimeFromPath(fallbackTrack.powerampPath)
                     ?: "application/octet-stream",
                 maxDurationLimitMs = maxDurationLimitMs,
-                maxOutputBytes = maxOutputBytes,
             )
         }.getOrElse {
             ExtractedMetadata(
@@ -293,7 +285,6 @@ class ShareCoordinator(
                 coverBytes = null,
                 audioMimeType = inferMimeFromPath(fallbackTrack.powerampPath) ?: "application/octet-stream",
                 maxDurationLimitMs = maxDurationLimitMs,
-                maxOutputBytes = maxOutputBytes,
             )
         }.also {
             retriever.release()
@@ -405,7 +396,6 @@ class ShareCoordinator(
         val coverBytes: ByteArray?,
         val audioMimeType: String,
         val maxDurationLimitMs: Long,
-        val maxOutputBytes: Long,
     )
 
     private data class PreparedAudioFile(

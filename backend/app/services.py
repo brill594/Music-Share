@@ -153,7 +153,7 @@ class StorageService:
         share_dir.chmod(0o755)
         audio_path = self.settings.storage_root / share.audio_path
         try:
-            await self._write_upload(audio_upload, audio_path, self.settings.max_audio_upload_bytes)
+            await self._write_upload(audio_upload, audio_path)
             if cover_upload is not None:
                 cover_mime = normalize_mime_type(
                     cover_upload.content_type,
@@ -164,7 +164,6 @@ class StorageService:
                 await self._write_upload(
                     cover_upload,
                     self.settings.storage_root / cover_path,
-                    self.settings.max_cover_upload_bytes,
                 )
                 share.cover_mime = cover_mime
                 share.cover_path = cover_path.as_posix()
@@ -219,7 +218,6 @@ class StorageService:
             await self._write_upload(
                 upload,
                 destination,
-                self.settings.max_cover_upload_bytes,
             )
         except Exception:
             destination.unlink(missing_ok=True)
@@ -327,23 +325,15 @@ class StorageService:
     async def _write_upload(
         upload: UploadFile,
         destination: Path,
-        max_bytes: int,
     ) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.parent.chmod(0o755)
-        written = 0
         await upload.seek(0)
         with destination.open("wb") as handle:
             while True:
                 chunk = await upload.read(1024 * 1024)
                 if not chunk:
                     break
-                written += len(chunk)
-                if written > max_bytes:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                        detail=f"Upload exceeds {max_bytes} bytes.",
-                    )
                 handle.write(chunk)
         destination.chmod(0o644)
         await upload.close()

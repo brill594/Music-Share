@@ -16,7 +16,6 @@ data class SettingsDraft(
     val sampleRateHz: String,
     val channels: Int,
     val maxDurationSeconds: String,
-    val maxOutputSizeMb: String,
 ) {
     companion object {
         fun from(appState: PersistedAppState): SettingsDraft {
@@ -33,7 +32,6 @@ data class SettingsDraft(
                 sampleRateHz = appState.transcode.sampleRateHz.toString(),
                 channels = appState.transcode.channels,
                 maxDurationSeconds = appState.transcode.maxDurationSeconds.toString(),
-                maxOutputSizeMb = appState.transcode.maxOutputSizeMb.toString(),
             )
         }
 

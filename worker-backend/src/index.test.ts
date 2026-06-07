@@ -281,9 +281,6 @@ describe("Cloudflare Worker backend compatibility", () => {
     vi.useRealTimers();
   });
 
-  it("defaults audio uploads to 200 MiB", () => {
-    expect(loadSettings(createEnv()).maxAudioUploadBytes).toBe(200 * 1024 * 1024);
-  });
 
   it("supports upload, public queries, stream/cover responses, and client termination", async () => {
     const harness = createHarness();
@@ -442,9 +439,10 @@ describe("Cloudflare Worker backend compatibility", () => {
     const { sessionKey: adminSession } = await login(harness, "admin-password");
 
     const form = new FormData();
+    const backgroundBytes = 8 * 1024 * 1024 + 1;
     form.set(
       "background",
-      new File([new Uint8Array([8, 7, 6, 5])], "background.webp", { type: "image/webp" }),
+      new File([new Uint8Array(backgroundBytes)], "background.webp", { type: "image/webp" }),
     );
 
     const updateResponse = await harness.request({
@@ -472,7 +470,9 @@ describe("Cloudflare Worker backend compatibility", () => {
     });
     expect(backgroundResponse.status).toBe(200);
     expect(backgroundResponse.headers.get("content-type")).toBe("image/webp");
-    expect(new Uint8Array(await backgroundResponse.arrayBuffer())).toEqual(new Uint8Array([8, 7, 6, 5]));
+    const backgroundPayload = new Uint8Array(await backgroundResponse.arrayBuffer());
+    expect(backgroundResponse.headers.get("content-length")).toBe(String(backgroundBytes));
+    expect(backgroundPayload.length).toBe(backgroundBytes);
 
     const adminStatusResponse = await harness.request({
       path: "/admin/background",

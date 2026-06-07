@@ -11,7 +11,6 @@ object AppDefaults {
     const val defaultSampleRateHz = 44_100
     const val defaultChannels = 2
     const val defaultMaxDurationSeconds = 900
-    const val defaultMaxOutputSizeMb = 16
 
     val supportedAuthModes = setOf("none", "basic")
     val supportedOutputFormats = setOf("ogg", "m4a", "mp3")
@@ -69,7 +68,6 @@ data class TranscodeConfig(
     val channels: Int = AppDefaults.defaultChannels,
     val loudnessMode: String = "off",
     val maxDurationSeconds: Int = AppDefaults.defaultMaxDurationSeconds,
-    val maxOutputSizeMb: Int = AppDefaults.defaultMaxOutputSizeMb,
 )
 
 @Serializable
@@ -166,7 +164,6 @@ data class PersistedAppState(
                 channels = transcode.channels.coerceIn(1, 2),
                 loudnessMode = loudnessMode,
                 maxDurationSeconds = transcode.maxDurationSeconds.coerceIn(30, 7_200),
-                maxOutputSizeMb = transcode.maxOutputSizeMb.coerceIn(2, 200),
             ),
             shareDefaults = shareDefaults.copy(
                 expireAfterSeconds = shareDefaults.expireAfterSeconds.coerceIn(60, 2_592_000),

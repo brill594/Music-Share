@@ -64,8 +64,6 @@ class Settings:
     share_default_ttl_seconds: int = 86_400
     share_max_ttl_seconds: int = 2_592_000
     cleanup_interval_seconds: int = 60
-    max_audio_upload_bytes: int = 200 * 1024 * 1024
-    max_cover_upload_bytes: int = 8 * 1024 * 1024
     max_duration_ms: int = 43_200_000
     public_api_base_url: str | None = None
     public_share_base_url: str | None = None
@@ -151,12 +149,6 @@ def load_settings() -> Settings:
         ),
         cleanup_interval_seconds=_get_int(
             "MUSIC_SHARE_CLEANUP_INTERVAL_SECONDS", 60
-        ),
-        max_audio_upload_bytes=_get_int(
-            "MUSIC_SHARE_MAX_AUDIO_UPLOAD_BYTES", 200 * 1024 * 1024
-        ),
-        max_cover_upload_bytes=_get_int(
-            "MUSIC_SHARE_MAX_COVER_UPLOAD_BYTES", 8 * 1024 * 1024
         ),
         max_duration_ms=_get_int("MUSIC_SHARE_MAX_DURATION_MS", 43_200_000),
         public_api_base_url=_get_optional_str("MUSIC_SHARE_PUBLIC_API_BASE_URL"),
