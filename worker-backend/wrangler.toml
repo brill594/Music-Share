@@ -22,13 +22,13 @@ MUSIC_SHARE_SESSION_COOKIE_NAME = "music_share_session"
 
 [[d1_databases]]
 binding = "MUSIC_SHARE_DB"
-database_name = "music-share-backend"
+database_name = "music_share"
 database_id = "e1cca9b0-f3c0-4d84-844b-d69b15e0ece8"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "MUSIC_SHARE_BUCKET"
-bucket_name = "music-share-backend"
+bucket_name = "music-share"
 
 [triggers]
 crons = ["* * * * *"]
