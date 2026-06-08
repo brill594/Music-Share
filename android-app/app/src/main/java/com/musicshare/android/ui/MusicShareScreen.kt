@@ -142,7 +142,6 @@ fun MusicShareScreen(
                     when (selectedTab) {
                         0 -> CurrentTrackTab(
                             appState = uiState.appState,
-                            onPickMusicTree = onPickMusicTree,
                             onShareNow = onShareNow,
                         )
                         1 -> ShareManagementTab(
@@ -161,6 +160,7 @@ fun MusicShareScreen(
                         else -> SettingsTab(
                             appState = uiState.appState,
                             adminUsage = uiState.adminUsage,
+                            onPickMusicTree = onPickMusicTree,
                             onExportConfig = onExportConfig,
                             onImportConfigPreserveId = onImportConfigPreserveId,
                             onImportConfigReplaceId = onImportConfigReplaceId,
@@ -318,7 +318,6 @@ private const val fallbackBlurRadius = 12
 @Composable
 private fun CurrentTrackTab(
     appState: PersistedAppState,
-    onPickMusicTree: () -> Unit,
     onShareNow: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
@@ -329,19 +328,6 @@ private fun CurrentTrackTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        HighlightCard(
-            title = if (appState.hasMusicTreePermission()) "目录授权已保存" else "需要授权音乐目录",
-            body = if (appState.hasMusicTreePermission()) {
-                "当前已保存音乐目录授权。如遇到无法读取当前歌曲，可重新授权。"
-            } else {
-                "首次使用前，请通过系统文档选择器授权 Poweramp 所在音乐目录。"
-            },
-        ) {
-            Button(onClick = onPickMusicTree) {
-                Text(if (appState.hasMusicTreePermission()) "重新授权目录" else "授权音乐目录")
-            }
-        }
-
         val track = appState.latestTrack
         if (track == null) {
             HighlightCard(
@@ -483,6 +469,7 @@ private fun ShareManagementTab(
 private fun SettingsTab(
     appState: PersistedAppState,
     adminUsage: AdminUsageDto?,
+    onPickMusicTree: () -> Unit,
     onExportConfig: () -> Unit,
     onImportConfigPreserveId: () -> Unit,
     onImportConfigReplaceId: () -> Unit,
@@ -511,6 +498,19 @@ private fun SettingsTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        HighlightCard(
+            title = if (appState.hasMusicTreePermission()) "音乐目录授权已保存" else "授权音乐目录",
+            body = if (appState.hasMusicTreePermission()) {
+                "当前已保存 Poweramp 音乐目录授权。如遇到无法读取当前歌曲，可重新授权。"
+            } else {
+                "首次使用前，请通过系统文档选择器授权 Poweramp 所在音乐目录。"
+            },
+        ) {
+            Button(onClick = onPickMusicTree) {
+                Text(if (appState.hasMusicTreePermission()) "重新授权目录" else "授权音乐目录")
+            }
+        }
+
         HighlightCard(
             title = "设置草稿",
             body = if (draft == sourceDraft) "当前没有未保存修改。" else "你有未保存修改，点击保存后才会生效。",
