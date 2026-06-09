@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
                     snackbarHostState = snackbarHostState,
                     onPickMusicTree = { openTreeLauncher.launch(null) },
                     onShareNow = { startShareWithNotificationPrompt() },
+                    onEnterShareManagement = { vm.onEnterShareManagement() },
                     onAuthenticateUser = { vm.authenticate(preferAdmin = false) },
                     onAuthenticateAdmin = { vm.authenticate(preferAdmin = true) },
                     onRefreshShares = { vm.refreshShares() },

@@ -100,6 +100,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Prepares the share page the first time it is opened: acquires a client session (only when
+     * password auth is configured and none is currently valid, so a signed-in or no-auth setup
+     * never triggers a redundant login) and then pulls the latest shares from the backend. No-op
+     * until a backend `base_url` is configured, so a fresh/unconfigured app stays quiet.
+     */
+    fun onEnterShareManagement() {
+        viewModelScope.launch {
+            val appState = container.stateStore.read()
+            if (appState.server.baseUrl.isBlank()) return@launch
+            val needsClientSession =
+                appState.server.authMode == "basic" && !appState.session.isValid()
+            if (needsClientSession) {
+                val acquired = runCatching {
+                    container.backendRepository.ensureSession(preferAdmin = false)
+                }.onSuccess {
+                    messages.tryEmit("已自动获取用户会话。")
+                }.onFailure { error ->
+                    messages.tryEmit(error.message ?: "自动获取用户会话失败。")
+                }.isSuccess
+                if (!acquired) return@launch
+            }
+            refreshShares()
+        }
+    }
+
     fun refreshShares() {
         viewModelScope.launch {
             isRefreshing.value = true

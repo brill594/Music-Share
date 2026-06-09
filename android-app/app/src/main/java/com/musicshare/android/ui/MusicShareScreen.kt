@@ -10,7 +10,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,33 +18,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,6 +71,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
+private const val shareManagementTabIndex = 1
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MusicShareScreen(
@@ -87,6 +80,7 @@ fun MusicShareScreen(
     snackbarHostState: SnackbarHostState,
     onPickMusicTree: () -> Unit,
     onShareNow: () -> Unit,
+    onEnterShareManagement: () -> Unit,
     onAuthenticateUser: () -> Unit,
     onAuthenticateAdmin: () -> Unit,
     onRefreshShares: () -> Unit,
@@ -101,6 +95,13 @@ fun MusicShareScreen(
     onClearSession: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var shareManagementAutoLoaded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(selectedTab) {
+        if (selectedTab == shareManagementTabIndex && !shareManagementAutoLoaded) {
+            shareManagementAutoLoaded = true
+            onEnterShareManagement()
+        }
+    }
 
     AlbumArtworkBackground(artUri = uiState.appState.latestTrack?.artUri.orEmpty()) {
         Scaffold(
@@ -144,7 +145,7 @@ fun MusicShareScreen(
                             appState = uiState.appState,
                             onShareNow = onShareNow,
                         )
-                        1 -> ShareManagementTab(
+                        shareManagementTabIndex -> ShareManagementTab(
                             appState = uiState.appState,
                             clientShares = uiState.clientShares,
                             adminShares = uiState.adminShares,
@@ -342,18 +343,20 @@ private fun CurrentTrackTab(
                     append("\n时长：${formatDurationLabel(track.durationMs)}")
                 },
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(if (track.isResolvable) "可访问" else "待重新解析") },
-                        colors = whiteAssistChipColors(),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(MsTokens.RowSpacing),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StatusChip(
+                        label = if (track.isResolvable) "可访问" else "待重新解析",
+                        good = track.isResolvable,
                     )
-                    Button(
+                    PrimaryButton(
+                        text = "立即分享",
                         onClick = onShareNow,
+                        modifier = Modifier.weight(1f),
                         enabled = track.isResolvable,
-                    ) {
-                        Text("立即分享")
-                    }
+                    )
                 }
             }
         }
@@ -405,12 +408,12 @@ private fun ShareManagementTab(
             title = "后端同步",
             body = "主动从后端拉取目前已有的音乐与分享信息，用于手动刷新管理列表。",
         ) {
-            Button(
+            PrimaryButton(
+                text = if (isRefreshing) "正在从后端拉取..." else "从后端拉取已有音乐信息",
                 onClick = onRefreshShares,
-                enabled = !isRefreshing,
-            ) {
-                Text(if (isRefreshing) "正在从后端拉取..." else "从后端拉取已有音乐信息")
-            }
+                modifier = Modifier.fillMaxWidth(),
+                loading = isRefreshing,
+            )
         }
 
         HighlightCard(
@@ -422,9 +425,17 @@ private fun ShareManagementTab(
                 }
             },
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onAuthenticateUser) { Text("获取用户会话") }
-                Button(onClick = onAuthenticateAdmin) { Text("获取管理员会话") }
+            ActionRow {
+                PrimaryButton(
+                    text = "获取用户会话",
+                    onClick = onAuthenticateUser,
+                    modifier = Modifier.weight(1f),
+                )
+                SecondaryButton(
+                    text = "获取管理员会话",
+                    onClick = onAuthenticateAdmin,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
@@ -444,11 +455,11 @@ private fun ShareManagementTab(
                     }
                 },
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onUploadAdminBackground) {
-                        Text("设置背景图")
-                    }
-                }
+                PrimaryButton(
+                    text = "设置背景图",
+                    onClick = onUploadAdminBackground,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             ShareSection(
@@ -506,29 +517,29 @@ private fun SettingsTab(
                 "首次使用前，请通过系统文档选择器授权 Poweramp 所在音乐目录。"
             },
         ) {
-            Button(onClick = onPickMusicTree) {
-                Text(if (appState.hasMusicTreePermission()) "重新授权目录" else "授权音乐目录")
-            }
+            PrimaryButton(
+                text = if (appState.hasMusicTreePermission()) "重新授权目录" else "授权音乐目录",
+                onClick = onPickMusicTree,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         HighlightCard(
             title = "设置草稿",
             body = if (draft == sourceDraft) "当前没有未保存修改。" else "你有未保存修改，点击保存后才会生效。",
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
+            ActionRow {
+                PrimaryButton(
+                    text = "保存设置",
                     onClick = { onSaveSettings(draft) },
+                    modifier = Modifier.weight(1f),
                     enabled = draft != sourceDraft,
-                ) {
-                    Text("保存设置")
-                }
-                TextButton(
+                )
+                TextActionButton(
+                    text = "撤销修改",
                     onClick = { draft = sourceDraft },
                     enabled = draft != sourceDraft,
-                    colors = whiteTextButtonColors(),
-                ) {
-                    Text("撤销修改")
-                }
+                )
             }
         }
 
@@ -545,13 +556,12 @@ private fun SettingsTab(
                     colors = whiteOutlinedTextFieldColors(),
                     singleLine = true,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
                     listOf("none" to "无需认证", "basic" to "密码认证").forEach { (value, label) ->
-                        FilterChip(
+                        MsFilterChip(
+                            label = label,
                             selected = draft.authMode == value,
                             onClick = { draft = draft.copy(authMode = value) },
-                            label = { Text(label) },
-                            colors = whiteFilterChipColors(),
                         )
                     }
                 }
@@ -566,7 +576,7 @@ private fun SettingsTab(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text("保留管理员密码")
-                    Switch(
+                    MsSwitch(
                         checked = draft.adminEnabled,
                         onCheckedChange = { draft = draft.copy(adminEnabled = it) },
                     )
@@ -576,12 +586,11 @@ private fun SettingsTab(
                     value = draft.adminPassword,
                     onValueChange = { draft = draft.copy(adminPassword = it) },
                 )
-                TextButton(
+                DestructiveButton(
+                    text = "清除本地短期凭证",
                     onClick = onClearSession,
-                    colors = whiteTextButtonColors(),
-                ) {
-                    Text("清除本地短期凭证")
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 
@@ -599,52 +608,27 @@ private fun SettingsTab(
                     colors = whiteOutlinedTextFieldColors(),
                     singleLine = true,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = false,
-                        onClick = {
-                            val preset = SettingsDraft.preset("fast")
-                            draft = draft.copy(
-                                outputFormat = preset.outputFormat,
-                                audioCodec = preset.audioCodec,
-                                bitrateKbps = preset.bitrateKbps.toString(),
-                                sampleRateHz = preset.sampleRateHz.toString(),
-                                channels = preset.channels,
-                            )
-                        },
-                        label = { Text("Fast Share") },
-                        colors = whiteFilterChipColors(),
-                    )
-                    FilterChip(
-                        selected = false,
-                        onClick = {
-                            val preset = SettingsDraft.preset("balanced")
-                            draft = draft.copy(
-                                outputFormat = preset.outputFormat,
-                                audioCodec = preset.audioCodec,
-                                bitrateKbps = preset.bitrateKbps.toString(),
-                                sampleRateHz = preset.sampleRateHz.toString(),
-                                channels = preset.channels,
-                            )
-                        },
-                        label = { Text("Balanced") },
-                        colors = whiteFilterChipColors(),
-                    )
-                    FilterChip(
-                        selected = false,
-                        onClick = {
-                            val preset = SettingsDraft.preset("better")
-                            draft = draft.copy(
-                                outputFormat = preset.outputFormat,
-                                audioCodec = preset.audioCodec,
-                                bitrateKbps = preset.bitrateKbps.toString(),
-                                sampleRateHz = preset.sampleRateHz.toString(),
-                                channels = preset.channels,
-                            )
-                        },
-                        label = { Text("Better Quality") },
-                        colors = whiteFilterChipColors(),
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
+                    listOf(
+                        "fast" to "Fast Share",
+                        "balanced" to "Balanced",
+                        "better" to "Better Quality",
+                    ).forEach { (presetKey, presetLabel) ->
+                        MsFilterChip(
+                            label = presetLabel,
+                            selected = false,
+                            onClick = {
+                                val preset = SettingsDraft.preset(presetKey)
+                                draft = draft.copy(
+                                    outputFormat = preset.outputFormat,
+                                    audioCodec = preset.audioCodec,
+                                    bitrateKbps = preset.bitrateKbps.toString(),
+                                    sampleRateHz = preset.sampleRateHz.toString(),
+                                    channels = preset.channels,
+                                )
+                            },
+                        )
+                    }
                 }
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
@@ -664,18 +648,16 @@ private fun SettingsTab(
                     colors = whiteOutlinedTextFieldColors(),
                     singleLine = true,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
+                Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
+                    MsFilterChip(
+                        label = "单声道",
                         selected = draft.channels == 1,
                         onClick = { draft = draft.copy(channels = 1) },
-                        label = { Text("单声道") },
-                        colors = whiteFilterChipColors(),
                     )
-                    FilterChip(
+                    MsFilterChip(
+                        label = "双声道",
                         selected = draft.channels == 2,
                         onClick = { draft = draft.copy(channels = 2) },
-                        label = { Text("双声道") },
-                        colors = whiteFilterChipColors(),
                     )
                 }
                 OutlinedTextField(
@@ -767,7 +749,7 @@ private fun SettingsTab(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text("启用远端保护")
-                            Switch(
+                            MsSwitch(
                                 checked = currentDraft.enabled,
                                 onCheckedChange = { usageDraft = currentDraft.copy(enabled = it) },
                             )
@@ -826,32 +808,29 @@ private fun SettingsTab(
                             colors = whiteOutlinedTextFieldColors(),
                             singleLine = true,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(
+                        ActionRow {
+                            PrimaryButton(
+                                text = "保存远端上限",
                                 onClick = { onSaveUsageLimits(currentDraft) },
+                                modifier = Modifier.weight(1f),
                                 enabled = currentDraft != usageSourceDraft,
-                            ) {
-                                Text("保存远端上限")
-                            }
-                            TextButton(
+                            )
+                            SecondaryButton(
+                                text = "填入免费额度",
                                 onClick = {
                                     usageDraft = UsageLimitsDraft.fromReference(
                                         adminUsage.cloudflareReference,
                                         enabled = currentDraft.enabled,
                                     )
                                 },
-                                colors = whiteTextButtonColors(),
-                            ) {
-                                Text("填入免费额度")
-                            }
+                                modifier = Modifier.weight(1f),
+                            )
                         }
-                        TextButton(
+                        TextActionButton(
+                            text = "撤销远端修改",
                             onClick = { usageDraft = usageSourceDraft },
                             enabled = currentDraft != usageSourceDraft,
-                            colors = whiteTextButtonColors(),
-                        ) {
-                            Text("撤销远端修改")
-                        }
+                        )
                     }
                 }
             }
@@ -862,13 +841,23 @@ private fun SettingsTab(
             body = "导出的 JSON 默认包含密码、短期凭证和认证日志。保存前请确认文件位置可信。",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onExportConfig) { Text("导出配置") }
-                    Button(onClick = onImportConfigPreserveId) { Text("导入并保留安装 ID") }
+                ActionRow {
+                    SecondaryButton(
+                        text = "导出配置",
+                        onClick = onExportConfig,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PrimaryButton(
+                        text = "导入并保留安装 ID",
+                        onClick = onImportConfigPreserveId,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-                Button(onClick = onImportConfigReplaceId) {
-                    Text("导入并覆盖安装 ID")
-                }
+                DestructiveButton(
+                    text = "导入并覆盖安装 ID",
+                    onClick = onImportConfigReplaceId,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
@@ -888,6 +877,7 @@ private fun ShareSection(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items.forEach { item ->
                 Card(
+                    shape = RoundedCornerShape(MsTokens.RadiusCardInner),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = shareItemContainerAlpha),
                         contentColor = musicShareTextColor,
@@ -911,34 +901,22 @@ private fun ShareSection(
                             }",
                         )
                         Text("过期：${formatDisplayTime(item.expiresAt)}")
-                        HorizontalDivider()
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            OutlinedButton(
-                                modifier = Modifier.weight(1.2f),
+                        HorizontalDivider(color = musicShareTextColor.copy(alpha = controlContainerAlpha))
+                        ActionRow {
+                            SecondaryButton(
+                                text = "复制共享链接",
                                 onClick = { clipboardManager.setText(AnnotatedString(item.shareUrl)) },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                                colors = whiteOutlinedButtonColors(),
-                            ) {
-                                Text(
-                                    text = "复制共享链接",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                )
-                            }
-                            Button(
-                                modifier = Modifier.weight(0.8f),
+                                modifier = Modifier.weight(1f),
+                                compact = true,
+                                maxLines = 2,
+                            )
+                            DestructiveButton(
+                                text = "结束共享",
                                 onClick = { onTerminate(item.shareCode) },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                            ) {
-                                Text(
-                                    text = "结束共享",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1,
-                                )
-                            }
+                                modifier = Modifier.weight(1f),
+                                compact = true,
+                                maxLines = 2,
+                            )
                         }
                     }
                 }
@@ -961,12 +939,11 @@ private fun PasswordField(
         label = { Text(label) },
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
-            TextButton(
+            TextActionButton(
+                text = if (visible) "隐藏" else "显示",
                 onClick = { visible = !visible },
-                colors = whiteTextButtonColors(),
-            ) {
-                Text(if (visible) "隐藏" else "显示")
-            }
+                compact = true,
+            )
         },
         colors = whiteOutlinedTextFieldColors(),
         singleLine = true,
@@ -1000,7 +977,7 @@ private fun HighlightCard(
     content: @Composable (() -> Unit)? = null,
 ) {
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(MsTokens.RadiusCard),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = highlightCardContainerAlpha),
             contentColor = musicShareTextColor,
@@ -1020,36 +997,6 @@ private fun HighlightCard(
         }
     }
 }
-
-@Composable
-private fun whiteTextButtonColors() = ButtonDefaults.textButtonColors(
-    contentColor = musicShareTextColor,
-    disabledContentColor = musicShareTextColor.copy(alpha = disabledTextAlpha),
-)
-
-@Composable
-private fun whiteOutlinedButtonColors() = ButtonDefaults.outlinedButtonColors(
-    contentColor = musicShareTextColor,
-    disabledContentColor = musicShareTextColor.copy(alpha = disabledTextAlpha),
-)
-
-@Composable
-private fun whiteAssistChipColors() = AssistChipDefaults.assistChipColors(
-    containerColor = Color.Transparent,
-    labelColor = musicShareTextColor,
-    disabledContainerColor = Color.Transparent,
-    disabledLabelColor = musicShareTextColor.copy(alpha = disabledTextAlpha),
-)
-
-@Composable
-private fun whiteFilterChipColors() = FilterChipDefaults.filterChipColors(
-    containerColor = Color.Transparent,
-    labelColor = musicShareTextColor,
-    disabledContainerColor = Color.Transparent,
-    disabledLabelColor = musicShareTextColor.copy(alpha = disabledTextAlpha),
-    selectedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = controlContainerAlpha),
-    selectedLabelColor = musicShareTextColor,
-)
 
 @Composable
 private fun whiteOutlinedTextFieldColors() = OutlinedTextFieldDefaults.colors(
