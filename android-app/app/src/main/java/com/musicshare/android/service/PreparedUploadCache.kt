@@ -63,9 +63,13 @@ class PreparedUploadCache(
     ): PreparedUpload {
         stagingRoot.deleteRecursively()
         stagingRoot.mkdirs()
+        var stagedAudio: File? = null
+        var stagedCover: File? = null
         return runCatching {
-            val cachedAudio = copyIntoCache(preparedUpload.audioFile, stagingRoot, audioBaseName)
-            val cachedCover = preparedUpload.coverFile?.let { copyIntoCache(it, stagingRoot, coverBaseName) }
+            val cachedAudio = moveIntoStaging(preparedUpload.audioFile, audioBaseName).also { stagedAudio = it }
+            val cachedCover = preparedUpload.coverFile
+                ?.let { moveIntoStaging(it, coverBaseName) }
+                ?.also { stagedCover = it }
             val metadata = CachedPreparedUpload(
                 cacheKey = buildCacheKey(track, transcodeConfig),
                 audioFileName = cachedAudio.name,
@@ -83,16 +87,16 @@ class PreparedUploadCache(
                 Charsets.UTF_8,
             )
             swapStagingIntoCache()
-            val cachedUploadAudio = File(cacheRoot, cachedAudio.name)
-            val cachedUploadCover = cachedCover?.let { File(cacheRoot, it.name) }
-            preparedUpload.audioFile.delete()
-            preparedUpload.coverFile?.delete()
             preparedUpload.copy(
-                audioFile = cachedUploadAudio,
-                coverFile = cachedUploadCover,
+                audioFile = File(cacheRoot, cachedAudio.name),
+                coverFile = cachedCover?.let { File(cacheRoot, it.name) },
                 isRetryCacheReady = true,
             )
         }.getOrElse { error ->
+            stagedAudio?.takeIf { it.exists() }?.renameTo(preparedUpload.audioFile)
+            preparedUpload.coverFile?.let { originalCover ->
+                stagedCover?.takeIf { it.exists() }?.renameTo(originalCover)
+            }
             stagingRoot.deleteRecursively()
             throw error
         }
@@ -139,10 +143,13 @@ class PreparedUploadCache(
         backupRoot.deleteRecursively()
     }
 
-    private fun copyIntoCache(source: File, root: File, baseName: String): File {
+    private fun moveIntoStaging(source: File, baseName: String): File {
         val extension = source.extension.takeIf { it.isNotBlank() }?.let { ".$it" }.orEmpty()
-        val target = File(root, "$baseName$extension")
-        source.copyTo(target, overwrite = true)
+        val target = File(stagingRoot, "$baseName$extension")
+        if (!source.renameTo(target)) {
+            source.copyTo(target, overwrite = true)
+            source.delete()
+        }
         return target
     }
 
@@ -162,6 +169,7 @@ class PreparedUploadCache(
             transcodeConfig.channels.toString(),
             transcodeConfig.loudnessMode,
             transcodeConfig.maxDurationSeconds.toString(),
+            transcodeConfig.passthroughPreferred.toString(),
         ).joinToString(separator = "\n")
         val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
         return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }

@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -48,19 +52,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.musicshare.android.R
+import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.data.PersistedAppState
+import com.musicshare.android.data.RuntimeStatus
 import com.musicshare.android.network.AdminBackgroundDto
 import com.musicshare.android.network.AdminUsageDto
 import com.musicshare.android.network.ShareItemDto
@@ -184,7 +195,7 @@ private fun AlbumArtworkBackground(
     val context = LocalContext.current
     val artworkBitmap by produceState<ImageBitmap?>(initialValue = null, artUri, context) {
         value = withContext(Dispatchers.IO) {
-            decodeArtworkBitmap(context, artUri)
+            decodeBackdropBitmap(context, artUri)
         }
     }
     Box(
@@ -209,33 +220,34 @@ private fun AlbumArtworkBackground(
     }
 }
 
-private fun decodeArtworkBitmap(context: Context, artUri: String) = runCatching {
+private fun decodeBackdropBitmap(context: Context, artUri: String): ImageBitmap? {
+    val blurredByModifier = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val maxEdge = if (blurredByModifier) maxBackgroundBitmapEdge else maxFallbackBitmapEdge
+    val decoded = decodeArtworkBitmap(context, artUri, maxEdge) ?: return null
+    val displayBitmap = if (blurredByModifier) {
+        decoded
+    } else {
+        boxBlur(decoded, fallbackBlurRadius).also { blurred ->
+            if (blurred !== decoded) decoded.recycle()
+        }
+    }
+    return displayBitmap.asImageBitmap()
+}
+
+private fun decodeArtworkBitmap(context: Context, artUri: String, maxEdge: Int): Bitmap? = runCatching {
     if (artUri.isBlank()) return@runCatching null
     val uri = Uri.parse(artUri)
-    val maxEdge = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        maxBackgroundBitmapEdge
-    } else {
-        maxFallbackBitmapEdge
-    }
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri)?.use { stream ->
         BitmapFactory.decodeStream(stream, null, bounds)
     }
     val sampleSize = calculateArtworkSampleSize(bounds.outWidth, bounds.outHeight, maxEdge)
     context.contentResolver.openInputStream(uri)?.use { stream ->
-        val decoded = BitmapFactory.decodeStream(
+        BitmapFactory.decodeStream(
             stream,
             null,
             BitmapFactory.Options().apply { inSampleSize = sampleSize },
-        ) ?: return@use null
-        val displayBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            decoded
-        } else {
-            boxBlur(decoded, fallbackBlurRadius).also { blurred ->
-                if (blurred !== decoded) decoded.recycle()
-            }
-        }
-        displayBitmap.asImageBitmap()
+        )
     }
 }.getOrNull()
 
@@ -314,6 +326,7 @@ private fun calculateArtworkSampleSize(width: Int, height: Int, maxEdge: Int): I
 
 private const val maxBackgroundBitmapEdge = 1080
 private const val maxFallbackBitmapEdge = 360
+private const val maxCoverBitmapEdge = 1080
 private const val fallbackBlurRadius = 12
 
 @Composable
@@ -336,47 +349,163 @@ private fun CurrentTrackTab(
                 body = "打开 Poweramp 并切换一次曲目后，App 会缓存当前可分享曲目。",
             )
         } else {
-            HighlightCard(
-                title = track.displayTitle(),
-                body = buildString {
-                    append(track.subtitle())
-                    append("\n时长：${formatDurationLabel(track.durationMs)}")
-                },
+            NowPlayingSection(
+                track = track,
+                runtime = appState.runtime,
+                onShareNow = onShareNow,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingSection(
+    track: CurrentTrackSnapshot,
+    runtime: RuntimeStatus,
+    onShareNow: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(MsTokens.RowSpacing)) {
+        AlbumCoverImage(
+            artUri = track.artUri,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Plate {
+            Text(
+                track.displayTitle(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Plate {
+            Text(
+                "${track.artist.ifBlank { "未知艺术家" }} · ${track.album.ifBlank { "未知专辑" }}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        Plate(verticalPadding = 6.dp) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(MsTokens.RowSpacing),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    StatusChip(
-                        label = if (track.isResolvable) "可访问" else "待重新解析",
-                        good = track.isResolvable,
-                    )
-                    PrimaryButton(
-                        text = "立即分享",
-                        onClick = onShareNow,
-                        modifier = Modifier.weight(1f),
-                        enabled = track.isResolvable,
-                    )
-                }
+                Text(
+                    "时长 ${formatDurationLabel(track.durationMs)}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                StatusChip(
+                    label = if (track.isResolvable) "可访问" else "待重新解析",
+                    good = track.isResolvable,
+                    compact = true,
+                )
             }
         }
+        PrimaryButton(
+            text = if (runtime.isProcessing) shareProgressLabel(runtime) else "立即分享",
+            onClick = onShareNow,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = track.isResolvable,
+            loading = runtime.isProcessing,
+        )
+        if (runtime.lastShareUrl.isNotBlank()) {
+            ShareLinkBox(shareUrl = runtime.lastShareUrl)
+        }
+        if (!runtime.isProcessing && runtime.lastError.isNotBlank()) {
+            Plate(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "错误：${runtime.lastError}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MsTokens.DestructiveLabel,
+                )
+            }
+        }
+    }
+}
 
-        val runtime = appState.runtime
-        if (
-            runtime.currentStage.isNotBlank() ||
-            runtime.progressPercent >= 0 ||
-            runtime.lastError.isNotBlank() ||
-            runtime.lastShareUrl.isNotBlank()
+private fun shareProgressLabel(runtime: RuntimeStatus): String = buildString {
+    append(runtime.currentStage.ifBlank { "正在处理" })
+    if (runtime.progressPercent >= 0) {
+        append(" ${runtime.progressPercent}%")
+    }
+}
+
+@Composable
+private fun ShareLinkBox(shareUrl: String) {
+    val clipboardManager = LocalClipboardManager.current
+    Plate(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MsTokens.RowSpacing),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            HighlightCard(
-                title = if (runtime.isProcessing) "后台任务进行中" else "最近一次结果",
-                body = buildString {
-                    if (runtime.currentStage.isNotBlank()) append("阶段：${runtime.currentStage}\n")
-                    if (runtime.progressPercent >= 0) append("进度：${runtime.progressPercent}%\n")
-                    if (runtime.lastError.isNotBlank()) append("错误：${runtime.lastError}\n")
-                    if (runtime.lastShareUrl.isNotBlank()) append("链接：${runtime.lastShareUrl}\n")
-                    if (runtime.lastCompletedAt.isNotBlank()) append("完成：${formatDisplayTime(runtime.lastCompletedAt)}")
-                }.trim(),
+            Text(
+                shareUrl,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            SecondaryButton(
+                text = "复制",
+                onClick = { clipboardManager.setText(AnnotatedString(shareUrl)) },
+                compact = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Plate(
+    modifier: Modifier = Modifier,
+    verticalPadding: Dp = 10.dp,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = highlightCardContainerAlpha),
+                shape = CircleShape,
+            )
+            .padding(horizontal = 18.dp, vertical = verticalPadding),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun AlbumCoverImage(
+    artUri: String,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val coverBitmap by produceState<ImageBitmap?>(initialValue = null, artUri, context) {
+        value = withContext(Dispatchers.IO) {
+            decodeArtworkBitmap(context, artUri, maxCoverBitmapEdge)?.asImageBitmap()
+        }
+    }
+    val cover = coverBitmap
+    if (cover != null) {
+        Image(
+            bitmap = cover,
+            contentDescription = "歌曲封面",
+            contentScale = ContentScale.Crop,
+            modifier = modifier
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(MsTokens.RadiusCard)),
+        )
+    } else {
+        Box(
+            modifier = modifier
+                .aspectRatio(1f)
+                .background(
+                    color = musicShareTextColor.copy(alpha = MsTokens.SecondaryContainerAlpha),
+                    shape = RoundedCornerShape(MsTokens.RadiusCard),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_music_tile),
+                contentDescription = null,
+                tint = musicShareTextColor.copy(alpha = MsTokens.StatusDotPendingAlpha),
+                modifier = Modifier.size(96.dp),
             )
         }
     }
@@ -596,9 +725,20 @@ private fun SettingsTab(
 
         HighlightCard(
             title = "分享与转码",
-            body = "首版优先把上传闭环跑通。可直接切换预设，也可以手动调时长和转码参数。",
+            body = "开启原格式优先时，后端支持的音频会直接上传原文件，无需转码；其余情况按下方参数转码。",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("原格式优先")
+                    MsSwitch(
+                        checked = draft.passthroughPreferred,
+                        onCheckedChange = { draft = draft.copy(passthroughPreferred = it) },
+                    )
+                }
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
                     value = draft.expireAfterSeconds,

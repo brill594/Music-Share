@@ -68,6 +68,7 @@ data class TranscodeConfig(
     val channels: Int = AppDefaults.defaultChannels,
     val loudnessMode: String = "off",
     val maxDurationSeconds: Int = AppDefaults.defaultMaxDurationSeconds,
+    val passthroughPreferred: Boolean = true,
 )
 
 @Serializable
@@ -101,12 +102,6 @@ data class CurrentTrackSnapshot(
     val isResolvable: Boolean = false,
 ) {
     fun displayTitle(): String = title.ifBlank { "未命名曲目" }
-
-    fun subtitle(): String {
-        val left = artist.ifBlank { "未知艺术家" }
-        val right = album.ifBlank { "未知专辑" }
-        return "$left · $right"
-    }
 }
 
 @Serializable

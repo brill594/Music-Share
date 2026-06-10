@@ -45,12 +45,6 @@ fun deriveAlbumArtTokens(seedArgb: Long, darkTheme: Boolean): AlbumArtTokens {
     )
 }
 
-/**
- * Derives a vivid accent in the cover's own hue so the primary button, selected chips, switch track
- * and status dot pick up the song artwork. Dull covers are lifted to a readable saturation and the
- * lightness is clamped to a usable button band; a colourless (grayscale) cover keeps the brand
- * orange so the accent never collapses to an arbitrary hue.
- */
 private fun vibrantAccentArgb(seedArgb: Long): Long {
     val r = shifted(seedArgb, 16) / 255f
     val g = shifted(seedArgb, 8) / 255f
@@ -70,9 +64,6 @@ private fun vibrantAccentArgb(seedArgb: Long): Long {
         saturation = saturation.coerceIn(minAccentSaturation, maxAccentSaturation),
         lightness = lightness.coerceIn(minAccentLightness, maxAccentLightness),
     )
-    // Keep even deep-hued accents bright enough to read as a distinct button against the near-black
-    // page background; lift toward white only as far as needed (stays below the white/black text
-    // crossover, so the label colour never flips).
     return raiseToMinLuminance(accent)
 }
 
@@ -197,9 +188,6 @@ private const val almostBlack = 0xff010101L
 private const val white = 0xffffffffL
 private const val black = 0xff000000L
 
-// Adaptive-accent tuning: below this chroma the cover is treated as colourless and keeps the brand
-// orange; otherwise the accent is pinned into a vivid, button-legible saturation/lightness band, and
-// the on-accent text flips between white and black at the WCAG white/black contrast crossover.
 private const val minAccentChroma = 0.12f
 private const val minAccentSaturation = 0.50f
 private const val maxAccentSaturation = 0.90f

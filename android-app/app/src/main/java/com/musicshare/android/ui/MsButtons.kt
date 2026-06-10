@@ -34,17 +34,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-/**
- * Single source of truth for the Poweramp-inspired control system. Every interactive surface in
- * the app routes through one of these so heights, shapes, padding, typography and the
- * "active == orange" colour language stay identical everywhere.
- *
- * Emphasis is carried by the orange fill (PrimaryButton), not by left/right position, so callers
- * can keep buttons in natural reading order. The accent is read live from [MaterialTheme.colorScheme]
- * .primary (pinned to Poweramp orange and album-stable), so these controls move with the dynamic
- * album-art theme for free. The only non-accent chroma is [MsTokens.DestructivePlate] /
- * [MsTokens.DestructiveLabel], reserved for irreversible actions so danger never reads like the accent.
- */
 object MsTokens {
     val RadiusControl = 10.dp
     val RadiusCard = 20.dp
@@ -59,12 +48,6 @@ object MsTokens {
 
     val Shape: Shape = RoundedCornerShape(RadiusControl)
 
-    /**
-     * Reserved danger colours, intentionally not album-derived. The plate is an opaque dark red so
-     * the button controls its own background regardless of the album art behind it, and the lighter
-     * [DestructiveLabel] clears AA contrast on it (~6.3:1) while staying clearly distinct from the
-     * orange accent (opaque-bright-orange Primary vs opaque-dark-red Destructive).
-     */
     val DestructivePlate = Color(0xFF4A1A1E)
     val DestructiveLabel = Color(0xFFFF8A85)
 
@@ -76,7 +59,6 @@ object MsTokens {
     const val SwitchUncheckedThumbAlpha = 0.85f
     const val StatusDotPendingAlpha = 0.45f
 
-    /** Reuses Theme.kt's [disabledTextAlpha] (0.38f) so disabled foregrounds dim uniformly. */
     const val DisabledForegroundAlpha = disabledTextAlpha
     const val DisabledContainerAlpha = 0.30f
 
@@ -86,7 +68,6 @@ object MsTokens {
     val ChipLabelStyle: TextStyle
         @Composable get() = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
 
-    /** Flat, Poweramp-style: no resting or pressed shadow on any filled button. */
     val FlatElevation: ButtonElevation
         @Composable get() = ButtonDefaults.buttonElevation(
             defaultElevation = 0.dp,
@@ -102,11 +83,6 @@ private fun MsLabel(text: String, maxLines: Int = 1) {
     Text(text, style = MsTokens.LabelStyle, maxLines = maxLines, softWrap = maxLines > 1)
 }
 
-/**
- * Highest emphasis: the single saturated orange action per surface. When [loading] is true the
- * button keeps its full-brightness enabled appearance, shows a leading spinner, and ignores taps
- * (so the spinner and label never drift to different brightnesses the way a disabled state would).
- */
 @Composable
 fun PrimaryButton(
     text: String,
@@ -143,7 +119,6 @@ fun PrimaryButton(
     }
 }
 
-/** Supporting non-destructive actions: a translucent white plate, no border, no accent. */
 @Composable
 fun SecondaryButton(
     text: String,
@@ -173,7 +148,6 @@ fun SecondaryButton(
     ) { MsLabel(text, maxLines) }
 }
 
-/** Irreversible/stop actions: a reserved red tint + red label, deliberately distinct from the accent. */
 @Composable
 fun DestructiveButton(
     text: String,
@@ -201,7 +175,6 @@ fun DestructiveButton(
     ) { MsLabel(text, maxLines) }
 }
 
-/** Lowest emphasis: a ghost text action. [compact] drops the min height for inline slots. */
 @Composable
 fun TextActionButton(
     text: String,
@@ -224,10 +197,6 @@ fun TextActionButton(
     ) { MsLabel(text, maxLines) }
 }
 
-/**
- * Flat chip. State-reflecting toggles get the orange wash when [selected]; momentary preset
- * triggers always pass `selected = false` and therefore stay transparent.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MsFilterChip(
@@ -257,12 +226,12 @@ fun MsFilterChip(
     )
 }
 
-/** Non-interactive status label with a leading state dot (orange == good, dim white == pending). */
 @Composable
 fun StatusChip(
     label: String,
     good: Boolean,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val dotColor = if (good) {
         MaterialTheme.colorScheme.primary
@@ -270,7 +239,7 @@ fun StatusChip(
         musicShareTextColor.copy(alpha = MsTokens.StatusDotPendingAlpha)
     }
     Row(
-        modifier = modifier.heightIn(min = MsTokens.ChipHeight),
+        modifier = if (compact) modifier else modifier.heightIn(min = MsTokens.ChipHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -284,7 +253,6 @@ fun StatusChip(
     }
 }
 
-/** Switch where the ON state is the same orange as a selected chip and the primary button. */
 @Composable
 fun MsSwitch(
     checked: Boolean,
@@ -313,7 +281,6 @@ fun MsSwitch(
     )
 }
 
-/** Equal-weight button row with the single standard gap. Fixes the old ad-hoc 1.2f/0.8f weights. */
 @Composable
 fun ActionRow(
     modifier: Modifier = Modifier,

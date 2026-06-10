@@ -100,12 +100,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Prepares the share page the first time it is opened: acquires a client session (only when
-     * password auth is configured and none is currently valid, so a signed-in or no-auth setup
-     * never triggers a redundant login) and then pulls the latest shares from the backend. No-op
-     * until a backend `base_url` is configured, so a fresh/unconfigured app stays quiet.
-     */
     fun onEnterShareManagement() {
         viewModelScope.launch {
             val appState = container.stateStore.read()
@@ -263,6 +257,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         sampleRateHz = sampleRateHz,
                         channels = draft.channels,
                         maxDurationSeconds = maxDurationSeconds,
+                        passthroughPreferred = draft.passthroughPreferred,
                     ),
                 )
             }
