@@ -100,6 +100,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun onEnterShareManagement() {
+        viewModelScope.launch {
+            val appState = container.stateStore.read()
+            if (appState.server.baseUrl.isBlank()) return@launch
+            val needsClientSession =
+                appState.server.authMode == "basic" && !appState.session.isValid()
+            if (needsClientSession) {
+                val acquired = runCatching {
+                    container.backendRepository.ensureSession(preferAdmin = false)
+                }.onSuccess {
+                    messages.tryEmit("已自动获取用户会话。")
+                }.onFailure { error ->
+                    messages.tryEmit(error.message ?: "自动获取用户会话失败。")
+                }.isSuccess
+                if (!acquired) return@launch
+            }
+            refreshShares()
+        }
+    }
+
     fun refreshShares() {
         viewModelScope.launch {
             isRefreshing.value = true
@@ -237,6 +257,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         sampleRateHz = sampleRateHz,
                         channels = draft.channels,
                         maxDurationSeconds = maxDurationSeconds,
+                        passthroughPreferred = draft.passthroughPreferred,
                     ),
                 )
             }

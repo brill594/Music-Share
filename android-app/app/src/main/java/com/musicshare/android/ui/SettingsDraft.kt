@@ -16,6 +16,7 @@ data class SettingsDraft(
     val sampleRateHz: String,
     val channels: Int,
     val maxDurationSeconds: String,
+    val passthroughPreferred: Boolean,
 ) {
     companion object {
         fun from(appState: PersistedAppState): SettingsDraft {
@@ -32,6 +33,7 @@ data class SettingsDraft(
                 sampleRateHz = appState.transcode.sampleRateHz.toString(),
                 channels = appState.transcode.channels,
                 maxDurationSeconds = appState.transcode.maxDurationSeconds.toString(),
+                passthroughPreferred = appState.transcode.passthroughPreferred,
             )
         }
 

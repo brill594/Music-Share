@@ -153,21 +153,31 @@ class ShareCoordinator(
         val targetSpec = FfmpegAudioTranscoder.TargetAudioSpec.from(appState.transcode)
         updateRuntime(processing = true, stage = "准备音频文件", progressPercent = -1)
         val sourceMime = metadata.audioMimeType
-        val preparedAudio = if (targetSpec.matchesSourceMime(sourceMime)) {
-            copySourceAudio(sourceUri, targetSpec.mimeType)
+        val passthrough = appState.transcode.passthroughPreferred && sourceMime in passthroughAudioMimeTypes
+        val skipTranscode = passthrough || targetSpec.matchesSourceMime(sourceMime)
+        val needsFfmpegCoverFallback = metadata.coverBytes?.let { detectImageMime(it) } == null
+        val preparedAudio = if (skipTranscode) {
+            copySourceAudio(sourceUri, if (passthrough) sourceMime else targetSpec.mimeType)
         } else {
             transcodeAudio(
                 sourceUri = sourceUri,
                 durationMs = metadata.durationMs,
                 transcodeConfig = appState.transcode,
+                keepStagedSource = needsFfmpegCoverFallback,
             )
         }
 
         updateRuntime(processing = true, stage = "提取封面", progressPercent = -1)
-        val coverResult = extractCover(
-            sourceUri = sourceUri,
-            metadata = metadata,
-        )
+        val coverResult = try {
+            extractCover(
+                sourceUri = sourceUri,
+                metadata = metadata,
+                stagedSource = preparedAudio.stagedSourceFile
+                    ?: preparedAudio.file.takeIf { skipTranscode },
+            )
+        } finally {
+            preparedAudio.stagedSourceFile?.delete()
+        }
 
         val preparedUpload = PreparedUpload(
             audioFile = preparedAudio.file,
@@ -196,11 +206,13 @@ class ShareCoordinator(
         sourceUri: Uri,
         durationMs: Long,
         transcodeConfig: TranscodeConfig,
+        keepStagedSource: Boolean,
     ): PreparedAudioFile {
         val result = audioTranscoder.transcode(
             sourceUri = sourceUri,
             durationMs = durationMs,
             transcodeConfig = transcodeConfig,
+            keepStagedSource = keepStagedSource,
             onProgress = { progress ->
                 updateRuntimeBlocking(
                     processing = true,
@@ -212,6 +224,7 @@ class ShareCoordinator(
         return PreparedAudioFile(
             file = result.file,
             audioMimeType = result.audioMimeType,
+            stagedSourceFile = result.stagedSourceFile,
         )
     }
 
@@ -232,6 +245,7 @@ class ShareCoordinator(
     private suspend fun extractCover(
         sourceUri: Uri,
         metadata: ExtractedMetadata,
+        stagedSource: File?,
     ): Pair<File, String>? {
         metadata.coverBytes?.let { bytes ->
             val coverMime = detectImageMime(bytes)
@@ -239,7 +253,7 @@ class ShareCoordinator(
                 return writeCoverBytesToFile(bytes, coverMime)
             }
         }
-        val extractedArtwork = audioTranscoder.extractEmbeddedArtwork(sourceUri) ?: return null
+        val extractedArtwork = audioTranscoder.extractEmbeddedArtwork(sourceUri, stagedSource) ?: return null
         return extractedArtwork.file to extractedArtwork.mimeType
     }
 
@@ -401,5 +415,16 @@ class ShareCoordinator(
     private data class PreparedAudioFile(
         val file: File,
         val audioMimeType: String,
+        val stagedSourceFile: File? = null,
     )
+
+    private companion object {
+        val passthroughAudioMimeTypes = setOf(
+            "audio/aac",
+            "audio/mp4",
+            "audio/mpeg",
+            "audio/ogg",
+            "audio/x-m4a",
+        )
+    }
 }

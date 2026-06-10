@@ -113,7 +113,6 @@ class ShareForegroundService : Service() {
         try {
             notificationManager.notify(notificationId, buildProgressNotification(this, runtime))
         } catch (_: SecurityException) {
-            // Android 13+ can deny notification posting; direct share still works from tile/notification action.
         }
     }
 
@@ -137,7 +136,6 @@ class ShareForegroundService : Service() {
             try {
                 notificationManager.notify(notificationId, buildShortcutNotification(context))
             } catch (_: SecurityException) {
-                // Android 13+ can deny notification posting; direct share still works from tile/notification action.
             }
         }
 
@@ -148,7 +146,6 @@ class ShareForegroundService : Service() {
                 notificationManager.notify(notificationId, buildResultNotification(context, runtime))
                 true
             } catch (_: SecurityException) {
-                // Android 13+ can deny notification posting; direct share still works from tile/notification action.
                 false
             }
         }
@@ -169,7 +166,6 @@ class ShareForegroundService : Service() {
                     NotificationCompat.BigTextStyle()
                         .bigText(context.getString(R.string.notification_body_shortcut)),
                 )
-                .setContentIntent(sharePendingIntent(context))
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -199,7 +195,6 @@ class ShareForegroundService : Service() {
                 .setContentTitle(title)
                 .setContentText(content)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-                .setContentIntent(sharePendingIntent(context))
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -221,7 +216,6 @@ class ShareForegroundService : Service() {
                 .setContentTitle(context.getString(R.string.notification_title_processing))
                 .setContentText(content)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-                .setContentIntent(sharePendingIntent(context))
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)

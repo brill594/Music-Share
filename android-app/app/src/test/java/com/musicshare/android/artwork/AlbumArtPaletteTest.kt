@@ -52,26 +52,32 @@ class AlbumArtPaletteTest {
     }
 
     @Test
-    fun appTextStaysWhiteWhileButtonUsesPowerampAccent() {
+    fun appChromeTextStaysWhiteWhileButtonFollowsCoverHue() {
         listOf(false, true).forEach { darkTheme ->
             val tokens = deriveAlbumArtTokens(0xff3366ccL, darkTheme)
 
-            assertEquals(0xffffffff.toInt(), tokens.onPrimaryArgb.toInt())
+            // App chrome text (surfaces/background) stays white regardless of cover.
             assertEquals(0xffffffff.toInt(), tokens.onSecondaryArgb.toInt())
             assertEquals(0xffffffff.toInt(), tokens.onSurfaceArgb.toInt())
             assertEquals(0xffffffff.toInt(), tokens.onSurfaceVariantArgb.toInt())
             assertEquals(0xffffffff.toInt(), tokens.onBackgroundArgb.toInt())
-            assertTrue(red(tokens.primaryArgb) > blue(tokens.primaryArgb))
+            // The button accent follows the cover hue (blue cover -> blue-dominant accent)...
+            assertTrue(blue(tokens.primaryArgb) > red(tokens.primaryArgb))
+            // ...while the filled button's own label stays legible on that accent.
+            assertTrue(contrastRatio(tokens.primaryArgb, tokens.onPrimaryArgb) >= 4.5)
         }
     }
 
     @Test
-    fun artworkPrimaryRemainsReadableOnAppBackground() {
+    fun artworkPrimaryStaysDistinctFromAppBackground() {
+        // The filled button must read as a distinct component against the dark page background
+        // (WCAG 1.4.11 non-text contrast >= 3:1). Label legibility on the fill is covered by
+        // derivedTokensKeepAllTextPairsReadable (primary vs onPrimary >= 4.5).
         listOf(0xff000000L, 0xffff8800L, 0xff3366ccL, 0xff777777L).forEach { seed ->
             listOf(false, true).forEach { darkTheme ->
                 val tokens = deriveAlbumArtTokens(seed, darkTheme)
 
-                assertTrue(contrastRatio(tokens.backgroundArgb, tokens.primaryArgb) >= 4.5)
+                assertTrue(contrastRatio(tokens.backgroundArgb, tokens.primaryArgb) >= 3.0)
             }
         }
     }

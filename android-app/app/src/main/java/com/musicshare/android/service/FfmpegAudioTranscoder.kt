@@ -22,25 +22,29 @@ import kotlinx.coroutines.withContext
 class FfmpegAudioTranscoder(
     private val context: Context,
 ) {
-    suspend fun extractEmbeddedArtwork(sourceUri: Uri): ExtractedArtwork? = withContext(Dispatchers.IO) {
-        val stagedInputFile = File.createTempFile(
+    suspend fun extractEmbeddedArtwork(
+        sourceUri: Uri,
+        stagedSource: File? = null,
+    ): ExtractedArtwork? = withContext(Dispatchers.IO) {
+        val reusedInput = stagedSource?.takeIf { it.exists() && it.length() > 0L }
+        val ownsInput = reusedInput == null
+        val inputFile = reusedInput ?: File.createTempFile(
             "music-share-artwork-input-${UUID.randomUUID()}",
             ".source",
             context.cacheDir,
-        )
+        ).also { copySourceToLocalFile(sourceUri, it) }
         val outputFile = File.createTempFile(
             "music-share-artwork-${UUID.randomUUID()}",
             ".png",
             context.cacheDir,
         )
-        copySourceToLocalFile(sourceUri, stagedInputFile)
         val arguments = listOf(
             "-y",
             "-hide_banner",
             "-loglevel",
             "error",
             "-i",
-            stagedInputFile.absolutePath,
+            inputFile.absolutePath,
             "-map",
             "0:v:0",
             "-frames:v",
@@ -51,8 +55,8 @@ class FfmpegAudioTranscoder(
         )
         Log.i(
             logTag,
-            "Starting artwork extraction sourceUri=$sourceUri stagedInput=${stagedInputFile.absolutePath} " +
-                "stagedBytes=${stagedInputFile.length()} output=${outputFile.absolutePath}",
+            "Starting artwork extraction sourceUri=$sourceUri stagedInput=${inputFile.absolutePath} " +
+                "stagedBytes=${inputFile.length()} reused=${!ownsInput} output=${outputFile.absolutePath}",
         )
 
         var sessionId = -1L
@@ -82,7 +86,9 @@ class FfmpegAudioTranscoder(
                         FFmpegKit.cancel(sessionId)
                     }
                     outputFile.delete()
-                    stagedInputFile.delete()
+                    if (ownsInput) {
+                        inputFile.delete()
+                    }
                 }
             }
 
@@ -106,7 +112,9 @@ class FfmpegAudioTranscoder(
                 mimeType = "image/png",
             )
         } finally {
-            stagedInputFile.delete()
+            if (ownsInput) {
+                inputFile.delete()
+            }
         }
     }
 
@@ -114,6 +122,7 @@ class FfmpegAudioTranscoder(
         sourceUri: Uri,
         durationMs: Long,
         transcodeConfig: TranscodeConfig,
+        keepStagedSource: Boolean = false,
         onProgress: (TranscodeProgress) -> Unit = {},
     ): TranscodeResult = withContext(Dispatchers.IO) {
         val targetSpec = TargetAudioSpec.from(transcodeConfig)
@@ -144,6 +153,7 @@ class FfmpegAudioTranscoder(
         var lastLogLine = ""
         var lastProgressPercent = -1
         var lastProgressAt = 0L
+        var stagedSourceRetained = false
 
         onProgress(TranscodeProgress(0, "FFmpeg 转换为 ${targetSpec.label}"))
 
@@ -221,12 +231,16 @@ class FfmpegAudioTranscoder(
 
             Log.i(logTag, "Transcode completed outputBytes=${outputFile.length()} mime=${targetSpec.mimeType}")
             onProgress(TranscodeProgress(100, "FFmpeg 转换完成"))
+            stagedSourceRetained = keepStagedSource
             TranscodeResult(
                 file = outputFile,
                 audioMimeType = targetSpec.mimeType,
+                stagedSourceFile = stagedInputFile.takeIf { keepStagedSource },
             )
         } finally {
-            stagedInputFile.delete()
+            if (!stagedSourceRetained) {
+                stagedInputFile.delete()
+            }
         }
     }
 
@@ -277,6 +291,7 @@ class FfmpegAudioTranscoder(
     data class TranscodeResult(
         val file: File,
         val audioMimeType: String,
+        val stagedSourceFile: File? = null,
     )
 
     data class ExtractedArtwork(
