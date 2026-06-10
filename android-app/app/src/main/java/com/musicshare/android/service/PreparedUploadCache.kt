@@ -43,6 +43,7 @@ class PreparedUploadCache(
             ?.takeIf { it.exists() && it.length() > 0L }
         return PreparedUpload(
             audioFile = audioFile,
+            audioFileName = audioFile.name,
             audioMimeType = metadata.audioMimeType,
             coverFile = coverFile,
             coverMimeType = metadata.coverMimeType.takeIf { coverFile != null },
@@ -61,12 +62,13 @@ class PreparedUploadCache(
         transcodeConfig: TranscodeConfig,
         preparedUpload: PreparedUpload,
     ): PreparedUpload {
+        val sourceAudio = requireNotNull(preparedUpload.audioFile) { "直传分享不写入准备缓存。" }
         stagingRoot.deleteRecursively()
         stagingRoot.mkdirs()
         var stagedAudio: File? = null
         var stagedCover: File? = null
         return runCatching {
-            val cachedAudio = moveIntoStaging(preparedUpload.audioFile, audioBaseName).also { stagedAudio = it }
+            val cachedAudio = moveIntoStaging(sourceAudio, audioBaseName).also { stagedAudio = it }
             val cachedCover = preparedUpload.coverFile
                 ?.let { moveIntoStaging(it, coverBaseName) }
                 ?.also { stagedCover = it }
@@ -89,11 +91,12 @@ class PreparedUploadCache(
             swapStagingIntoCache()
             preparedUpload.copy(
                 audioFile = File(cacheRoot, cachedAudio.name),
+                audioFileName = cachedAudio.name,
                 coverFile = cachedCover?.let { File(cacheRoot, it.name) },
                 isRetryCacheReady = true,
             )
         }.getOrElse { error ->
-            stagedAudio?.takeIf { it.exists() }?.renameTo(preparedUpload.audioFile)
+            stagedAudio?.takeIf { it.exists() }?.renameTo(sourceAudio)
             preparedUpload.coverFile?.let { originalCover ->
                 stagedCover?.takeIf { it.exists() }?.renameTo(originalCover)
             }

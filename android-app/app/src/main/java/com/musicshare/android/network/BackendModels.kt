@@ -111,7 +111,9 @@ data class AdminUsageUpdateRequest(
 )
 
 data class PreparedUpload(
-    val audioFile: java.io.File,
+    val audioFile: java.io.File?,
+    val audioUri: android.net.Uri? = null,
+    val audioFileName: String,
     val audioMimeType: String,
     val coverFile: java.io.File?,
     val coverMimeType: String?,

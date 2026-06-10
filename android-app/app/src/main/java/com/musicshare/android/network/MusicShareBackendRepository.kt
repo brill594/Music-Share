@@ -19,12 +19,16 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
+import okio.source
 
 class MusicShareBackendRepository(
     private val context: Context,
@@ -80,12 +84,19 @@ class MusicShareBackendRepository(
         onProgress: (UploadProgress) -> Unit = {},
     ): ShareItemDto =
         withAuthorizedSession(retryOnSessionExpired = false) { state, session ->
+            val audioMediaType = preparedUpload.audioMimeType.toMediaType()
+            val audioBody = preparedUpload.audioFile?.asRequestBody(audioMediaType)
+                ?: contentUriRequestBody(
+                    uri = preparedUpload.audioUri
+                        ?: throw UserVisibleException("无法读取当前音频文件。"),
+                    mediaType = audioMediaType,
+                )
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart(
                     name = "file",
-                    filename = preparedUpload.audioFile.name,
-                    body = preparedUpload.audioFile.asRequestBody(preparedUpload.audioMimeType.toMediaType()),
+                    filename = preparedUpload.audioFileName,
+                    body = audioBody,
                 )
                 .addFormDataPart("title", preparedUpload.title)
                 .addFormDataPart("artist", preparedUpload.artist)
@@ -111,6 +122,22 @@ class MusicShareBackendRepository(
                 client = uploadHttpClient,
             )
         }
+
+    private fun contentUriRequestBody(uri: Uri, mediaType: MediaType): RequestBody = object : RequestBody() {
+        override fun contentType(): MediaType = mediaType
+
+        override fun contentLength(): Long = runCatching {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+        }.getOrDefault(-1L)
+
+        override fun isOneShot(): Boolean = true
+
+        override fun writeTo(sink: BufferedSink) {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw IOException("无法读取源音频文件。")
+            input.source().use { source -> sink.writeAll(source) }
+        }
+    }
 
     suspend fun listClientShares(): List<ShareItemDto> =
         withAuthorizedSession { state, session ->

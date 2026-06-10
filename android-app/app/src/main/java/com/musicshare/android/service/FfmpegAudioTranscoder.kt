@@ -4,10 +4,10 @@ import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
-import com.arthenica.ffmpegkit.FFmpegKit
-import com.arthenica.ffmpegkit.FFmpegSession
-import com.arthenica.ffmpegkit.ReturnCode
-import com.arthenica.ffmpegkit.Statistics
+import com.antonkarpenko.ffmpegkit.FFmpegKit
+import com.antonkarpenko.ffmpegkit.FFmpegSession
+import com.antonkarpenko.ffmpegkit.ReturnCode
+import com.antonkarpenko.ffmpegkit.Statistics
 import com.musicshare.android.data.TranscodeConfig
 import com.musicshare.android.util.UserVisibleException
 import java.io.File

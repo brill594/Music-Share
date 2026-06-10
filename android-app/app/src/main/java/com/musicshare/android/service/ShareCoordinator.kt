@@ -151,13 +151,36 @@ class ShareCoordinator(
         }
 
         val targetSpec = FfmpegAudioTranscoder.TargetAudioSpec.from(appState.transcode)
-        updateRuntime(processing = true, stage = "准备音频文件", progressPercent = -1)
         val sourceMime = metadata.audioMimeType
-        val passthrough = appState.transcode.passthroughPreferred && sourceMime in passthroughAudioMimeTypes
-        val skipTranscode = passthrough || targetSpec.matchesSourceMime(sourceMime)
+        if (appState.transcode.passthroughPreferred && sourceMime in passthroughAudioMimeTypes) {
+            updateRuntime(processing = true, stage = "提取封面", progressPercent = -1)
+            val coverResult = extractCover(
+                sourceUri = sourceUri,
+                metadata = metadata,
+                stagedSource = null,
+            )
+            preparedUploadCache.clear()
+            return@withContext PreparedUpload(
+                audioFile = null,
+                audioUri = sourceUri,
+                audioFileName = "audio${extensionForMime(sourceMime)}",
+                audioMimeType = sourceMime,
+                coverFile = coverResult?.first,
+                coverMimeType = coverResult?.second,
+                title = metadata.title.ifBlank { track.displayTitle() },
+                artist = metadata.artist.ifBlank { track.artist },
+                album = metadata.album.ifBlank { track.album },
+                durationMs = metadata.durationMs,
+                clientCreatedAt = track.updatedAt.ifBlank { nowIso() },
+                expireAfterSeconds = appState.shareDefaults.expireAfterSeconds,
+            )
+        }
+
+        updateRuntime(processing = true, stage = "准备音频文件", progressPercent = -1)
+        val skipTranscode = targetSpec.matchesSourceMime(sourceMime)
         val needsFfmpegCoverFallback = metadata.coverBytes?.let { detectImageMime(it) } == null
         val preparedAudio = if (skipTranscode) {
-            copySourceAudio(sourceUri, if (passthrough) sourceMime else targetSpec.mimeType)
+            copySourceAudio(sourceUri, targetSpec.mimeType)
         } else {
             transcodeAudio(
                 sourceUri = sourceUri,
@@ -181,6 +204,7 @@ class ShareCoordinator(
 
         val preparedUpload = PreparedUpload(
             audioFile = preparedAudio.file,
+            audioFileName = preparedAudio.file.name,
             audioMimeType = preparedAudio.audioMimeType,
             coverFile = coverResult?.first,
             coverMimeType = coverResult?.second,
