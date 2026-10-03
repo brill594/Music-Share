@@ -4,17 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -29,6 +21,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,7 +63,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -69,7 +70,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -123,7 +123,9 @@ fun MusicShareScreen(
     onSaveUsageLimits: (UsageLimitsDraft) -> Unit,
     onClearSession: () -> Unit,
 ) {
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { 3 })
+    val selectedTab by remember { derivedStateOf { pagerState.targetPage } }
+    val navigationScope = rememberCoroutineScope()
     val navigationPosition by animateFloatAsState(
         targetValue = selectedTab.toFloat(),
         animationSpec = tween(220),
@@ -174,7 +176,11 @@ fun MusicShareScreen(
                             )
                             Box(
                                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
-                                    .selectable(selected = selected, role = Role.Tab, onClick = { selectedTab = index })
+                                    .selectable(selected = selected, role = Role.Tab, onClick = {
+                                        navigationScope.launch {
+                                            pagerState.animateScrollToPage(index, animationSpec = tween(220))
+                                        }
+                                    })
                                     .heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 12.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -192,17 +198,13 @@ fun MusicShareScreen(
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
             CompositionLocalProvider(LocalContentColor provides musicShareTextColor) {
-                AnimatedContent(
-                    targetState = selectedTab,
-                    modifier = Modifier.fillMaxSize().padding(padding).clipToBounds(),
-                    transitionSpec = {
-                        val direction = if (targetState > initialState) 1 else -1
-                        (slideInHorizontally(tween(220)) { direction * it / 12 } + fadeIn(tween(180)))
-                            .togetherWith(
-                                slideOutHorizontally(tween(220)) { -direction * it / 12 } + fadeOut(tween(150)),
-                            )
-                    },
-                    label = "Page transition",
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    // Keep the three tab compositions alive; each long page still loads items lazily.
+                    beyondViewportPageCount = 2,
+                    userScrollEnabled = false,
+                    key = { it },
                 ) { tab ->
                     when (tab) {
                         0 -> CurrentTrackTab(
@@ -261,7 +263,7 @@ private fun AlbumArtworkBackground(
                 bitmap = bitmap,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.blur(36.dp).fillMaxSize().alpha(0.56f),
+                modifier = Modifier.fillMaxSize().alpha(0.56f),
             )
             Box(
                 modifier = Modifier
@@ -274,17 +276,11 @@ private fun AlbumArtworkBackground(
 }
 
 private fun decodeBackdropBitmap(context: Context, artUri: String): ImageBitmap? {
-    val blurredByModifier = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val maxEdge = if (blurredByModifier) maxBackgroundBitmapEdge else maxFallbackBitmapEdge
-    val decoded = decodeArtworkBitmap(context, artUri, maxEdge) ?: return null
-    val displayBitmap = if (blurredByModifier) {
-        decoded
-    } else {
-        boxBlur(decoded, fallbackBlurRadius).also { blurred ->
-            if (blurred !== decoded) decoded.recycle()
-        }
-    }
-    return displayBitmap.asImageBitmap()
+    val decoded = decodeArtworkBitmap(context, artUri, maxBackgroundBitmapEdge) ?: return null
+    // Blur once when the artwork changes, rather than filtering the full screen during every transition.
+    val blurred = boxBlur(decoded, backgroundBlurRadius)
+    if (blurred !== decoded) decoded.recycle()
+    return blurred.asImageBitmap()
 }
 
 private fun decodeArtworkBitmap(context: Context, artUri: String, maxEdge: Int): Bitmap? = runCatching {
@@ -377,10 +373,9 @@ private fun calculateArtworkSampleSize(width: Int, height: Int, maxEdge: Int): I
     return sampleSize.coerceAtLeast(1)
 }
 
-private const val maxBackgroundBitmapEdge = 1080
-private const val maxFallbackBitmapEdge = 360
+private const val maxBackgroundBitmapEdge = 360
 private const val maxCoverBitmapEdge = 1080
-private const val fallbackBlurRadius = 12
+private const val backgroundBlurRadius = 12
 
 @Composable
 private fun CurrentTrackTab(
@@ -578,81 +573,80 @@ private fun ShareManagementTab(
     onTerminateAdminShare: (String) -> Unit,
     onUploadAdminBackground: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().testTag("share-management-list"),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        HighlightCard(
-            title = "后端同步",
-            body = "主动从后端拉取目前已有的音乐与分享信息，用于手动刷新管理列表。",
-        ) {
-            PrimaryButton(
-                text = if (isRefreshing) "正在从后端拉取..." else "从后端拉取已有音乐信息",
-                onClick = onRefreshShares,
-                modifier = Modifier.fillMaxWidth(),
-                loading = isRefreshing,
-            )
-        }
-
-        HighlightCard(
-            title = "认证状态",
-            body = buildString {
-                append("当前角色：${appState.session.role.ifBlank { "未认证" }}")
-                if (appState.session.expiresAt.isNotBlank()) {
-                    append("\n有效至：${formatDisplayTime(appState.session.expiresAt)}")
-                }
-            },
-        ) {
-            ActionRow {
+        item(key = "sync") {
+            HighlightCard(
+                title = "后端同步",
+            ) {
                 PrimaryButton(
-                    text = "获取用户会话",
-                    onClick = onAuthenticateUser,
-                    modifier = Modifier.weight(1f),
-                )
-                SecondaryButton(
-                    text = "获取管理员会话",
-                    onClick = onAuthenticateAdmin,
-                    modifier = Modifier.weight(1f),
+                    text = if (isRefreshing) "刷新中…" else "刷新列表",
+                    onClick = onRefreshShares,
+                    modifier = Modifier.fillMaxWidth(),
+                    loading = isRefreshing,
                 )
             }
         }
 
-        ShareSection(
+        item(key = "auth") {
+            HighlightCard(
+                title = "认证状态",
+                body = buildString {
+                    append("当前角色：${appState.session.role.ifBlank { "未认证" }}")
+                    if (appState.session.expiresAt.isNotBlank()) {
+                        append("\n有效至：${formatDisplayTime(appState.session.expiresAt)}")
+                    }
+                },
+            ) {
+                ActionRow {
+                    PrimaryButton(
+                        text = "获取用户会话",
+                        onClick = onAuthenticateUser,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SecondaryButton(
+                        text = "获取管理员会话",
+                        onClick = onAuthenticateAdmin,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        shareSection(
+            sectionKey = "client",
             title = "我的分享",
             items = clientShares,
             onTerminate = onTerminateClientShare,
         )
 
         if (appState.session.role == "admin") {
-            HighlightCard(
-                title = "背景图管理",
-                body = buildString {
-                    append(if (adminBackground?.configured == true) "当前已配置全局背景图。" else "当前未配置全局背景图。")
-                    if (!adminBackground?.updatedAt.isNullOrBlank()) {
-                        append("\n最近更新：${formatDisplayTime(adminBackground?.updatedAt.orEmpty())}")
-                    }
-                },
-            ) {
-                PrimaryButton(
-                    text = "设置背景图",
-                    onClick = onUploadAdminBackground,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            item(key = "background") {
+                HighlightCard(
+                    title = "背景图管理",
+                    body = buildString {
+                        append(if (adminBackground?.configured == true) "当前已配置全局背景图。" else "当前未配置全局背景图。")
+                        if (!adminBackground?.updatedAt.isNullOrBlank()) {
+                            append("\n最近更新：${formatDisplayTime(adminBackground?.updatedAt.orEmpty())}")
+                        }
+                    },
+                ) {
+                    PrimaryButton(
+                        text = "设置背景图",
+                        onClick = onUploadAdminBackground,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
-            ShareSection(
+            shareSection(
+                sectionKey = "admin",
                 title = "后端管理",
                 items = adminShares,
                 onTerminate = onTerminateAdminShare,
-            )
-        } else {
-            HighlightCard(
-                title = "后端管理不可见",
-                body = "需要先拿到管理员短期凭证，管理员列表才会显示。",
             )
         }
     }
@@ -683,435 +677,434 @@ private fun SettingsTab(
         adminUsage?.let { UsageLimitsDraft.from(it) }
     }
     var usageDraft by remember(usageSourceDraft) { mutableStateOf(usageSourceDraft) }
-    val scrollState = rememberScrollState()
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().testTag("settings-list"),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        HighlightCard(
-            title = if (appState.hasMusicTreePermission()) "音乐目录授权已保存" else "授权音乐目录",
-            body = if (appState.hasMusicTreePermission()) {
-                "当前已保存 Poweramp 音乐目录授权。如遇到无法读取当前歌曲，可重新授权。"
-            } else {
-                "首次使用前，请通过系统文档选择器授权 Poweramp 所在音乐目录。"
-            },
-        ) {
-            PrimaryButton(
-                text = if (appState.hasMusicTreePermission()) "重新授权目录" else "授权音乐目录",
-                onClick = onPickMusicTree,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-
-        HighlightCard(
-            title = "设置草稿",
-            body = if (draft == sourceDraft) "当前没有未保存修改。" else "你有未保存修改，点击保存后才会生效。",
-        ) {
-            ActionRow {
-                PrimaryButton(
-                    text = "保存设置",
-                    onClick = { onSaveSettings(draft) },
-                    modifier = Modifier.weight(1f),
-                    enabled = draft != sourceDraft,
-                )
-                TextActionButton(
-                    text = "撤销修改",
-                    onClick = { draft = sourceDraft },
-                    enabled = draft != sourceDraft,
-                )
-            }
-        }
-
-        HighlightCard(
-            title = "后端连接",
-            body = "`base_url` 直接填写完整入口地址。输入裸域名会在保存时自动补成 `https://`，非标准端口请直接写在 `base_url` 里。",
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = draft.baseUrl,
-                    onValueChange = { draft = draft.copy(baseUrl = it) },
-                    label = { Text("base_url") },
-                    colors = whiteOutlinedTextFieldColors(),
-                    singleLine = true,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
-                    listOf("none" to "无需认证", "basic" to "密码认证").forEach { (value, label) ->
-                        MsFilterChip(
-                            label = label,
-                            selected = draft.authMode == value,
-                            onClick = { draft = draft.copy(authMode = value) },
-                        )
-                    }
-                }
-                PasswordField(
-                    label = "basic_auth_password",
-                    value = draft.basicAuthPassword,
-                    onValueChange = { draft = draft.copy(basicAuthPassword = it) },
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("保留管理员密码")
-                    MsSwitch(
-                        checked = draft.adminEnabled,
-                        onCheckedChange = { draft = draft.copy(adminEnabled = it) },
-                    )
-                }
-                PasswordField(
-                    label = "admin_password",
-                    value = draft.adminPassword,
-                    onValueChange = { draft = draft.copy(adminPassword = it) },
-                )
-                DestructiveButton(
-                    text = "清除本地短期凭证",
-                    onClick = onClearSession,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
-        HighlightCard(
-            title = "分享与转码",
-            body = "开启原格式优先时，后端支持的音频会直接上传原文件，无需转码；其余情况按下方参数转码。",
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("原格式优先")
-                    MsSwitch(
-                        checked = draft.passthroughPreferred,
-                        onCheckedChange = { draft = draft.copy(passthroughPreferred = it) },
-                    )
-                }
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = draft.expireAfterSeconds,
-                    onValueChange = { draft = draft.copy(expireAfterSeconds = it) },
-                    label = { Text("expire_after_seconds") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = whiteOutlinedTextFieldColors(),
-                    singleLine = true,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
-                    listOf(
-                        "fast" to "Fast Share",
-                        "balanced" to "Balanced",
-                        "better" to "Better Quality",
-                    ).forEach { (presetKey, presetLabel) ->
-                        MsFilterChip(
-                            label = presetLabel,
-                            selected = false,
-                            onClick = {
-                                val preset = SettingsDraft.preset(presetKey)
-                                draft = draft.copy(
-                                    outputFormat = preset.outputFormat,
-                                    audioCodec = preset.audioCodec,
-                                    bitrateKbps = preset.bitrateKbps.toString(),
-                                    sampleRateHz = preset.sampleRateHz.toString(),
-                                    channels = preset.channels,
-                                )
-                            },
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = draft.bitrateKbps,
-                    onValueChange = { draft = draft.copy(bitrateKbps = it) },
-                    label = { Text("bitrate_kbps") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = whiteOutlinedTextFieldColors(),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = draft.sampleRateHz,
-                    onValueChange = { draft = draft.copy(sampleRateHz = it) },
-                    label = { Text("sample_rate_hz") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = whiteOutlinedTextFieldColors(),
-                    singleLine = true,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
-                    MsFilterChip(
-                        label = "单声道",
-                        selected = draft.channels == 1,
-                        onClick = { draft = draft.copy(channels = 1) },
-                    )
-                    MsFilterChip(
-                        label = "双声道",
-                        selected = draft.channels == 2,
-                        onClick = { draft = draft.copy(channels = 2) },
-                    )
-                }
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = draft.maxDurationSeconds,
-                    onValueChange = { draft = draft.copy(maxDurationSeconds = it) },
-                    label = { Text("max_duration_seconds") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = whiteOutlinedTextFieldColors(),
-                    singleLine = true,
-                )
-                Text(
-                    text = "当前草稿输出偏好：${draft.outputFormat}/${draft.audioCodec}，保存后才会用于实际转码。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-
-        if (adminUsage == null) {
+        item(key = "music-directory") {
             HighlightCard(
-                title = "远端用量上限",
-                body = "先获取管理员会话并刷新一次，才会显示 Cloudflare D1/R2 用量统计和远端上限配置。",
-            )
-        } else {
-            HighlightCard(
-                title = "当前远端用量",
-                body = buildString {
-                    append("用于按 Cloudflare 免费额度相关指标做保护。")
-                    if (adminUsage.updatedAt != null) {
-                        append("\n上限更新：${formatDisplayTime(adminUsage.updatedAt)}")
-                    }
-                    if (adminUsage.generatedAt.isNotBlank()) {
-                        append("\n统计生成：${formatDisplayTime(adminUsage.generatedAt)}")
-                    }
-                    append("\n窗口：R2 采用近 ${adminUsage.cloudflareReference.rollingWindowDays} 天滚动估算。")
-                },
+                title = if (appState.hasMusicTreePermission()) "音乐目录授权已保存" else "授权音乐目录",
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    UsageMetricLine(
-                        label = "D1 每日读取行数",
-                        detail = "${formatCount(adminUsage.d1RowsReadDaily.used)} / ${formatCount(adminUsage.d1RowsReadDaily.limit)}",
-                        exceeded = adminUsage.d1RowsReadDaily.exceeded,
+                PrimaryButton(
+                    text = if (appState.hasMusicTreePermission()) "重新授权目录" else "授权音乐目录",
+                    onClick = onPickMusicTree,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item(key = "draft") {
+            HighlightCard(
+                title = "设置草稿",
+                body = if (draft == sourceDraft) "" else "有未保存修改",
+            ) {
+                ActionRow {
+                    PrimaryButton(
+                        text = "保存设置",
+                        onClick = { onSaveSettings(draft) },
+                        modifier = Modifier.weight(1f),
+                        enabled = draft != sourceDraft,
                     )
-                    UsageMetricLine(
-                        label = "D1 每日写入行数",
-                        detail = "${formatCount(adminUsage.d1RowsWrittenDaily.used)} / ${formatCount(adminUsage.d1RowsWrittenDaily.limit)}",
-                        exceeded = adminUsage.d1RowsWrittenDaily.exceeded,
+                    TextActionButton(
+                        text = "撤销修改",
+                        onClick = { draft = sourceDraft },
+                        enabled = draft != sourceDraft,
                     )
-                    UsageMetricLine(
-                        label = "D1 总存储",
-                        detail = "${formatGb(adminUsage.d1Storage.usedGb)} GB / ${formatGb(adminUsage.d1Storage.limitGb)} GB",
-                        exceeded = adminUsage.d1Storage.exceeded,
+                }
+            }
+        }
+
+        item(key = "connection") {
+            HighlightCard(
+                title = "后端连接",
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = draft.baseUrl,
+                        onValueChange = { draft = draft.copy(baseUrl = it) },
+                        label = { Text("base_url") },
+                        colors = whiteOutlinedTextFieldColors(),
+                        singleLine = true,
                     )
-                    UsageMetricLine(
-                        label = "R2 Class A（近 30 天）",
-                        detail = "${formatCount(adminUsage.r2ClassARolling30d.used)} / ${formatCount(adminUsage.r2ClassARolling30d.limit)}",
-                        exceeded = adminUsage.r2ClassARolling30d.exceeded,
+                    Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
+                        listOf("none" to "无需认证", "basic" to "密码认证").forEach { (value, label) ->
+                            MsFilterChip(
+                                label = label,
+                                selected = draft.authMode == value,
+                                onClick = { draft = draft.copy(authMode = value) },
+                            )
+                        }
+                    }
+                    PasswordField(
+                        label = "basic_auth_password",
+                        value = draft.basicAuthPassword,
+                        onValueChange = { draft = draft.copy(basicAuthPassword = it) },
                     )
-                    UsageMetricLine(
-                        label = "R2 Class B（近 30 天）",
-                        detail = "${formatCount(adminUsage.r2ClassBRolling30d.used)} / ${formatCount(adminUsage.r2ClassBRolling30d.limit)}",
-                        exceeded = adminUsage.r2ClassBRolling30d.exceeded,
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("保留管理员密码")
+                        MsSwitch(
+                            checked = draft.adminEnabled,
+                            onCheckedChange = { draft = draft.copy(adminEnabled = it) },
+                        )
+                    }
+                    PasswordField(
+                        label = "admin_password",
+                        value = draft.adminPassword,
+                        onValueChange = { draft = draft.copy(adminPassword = it) },
                     )
-                    UsageMetricLine(
-                        label = "R2 存储（GB-month）",
-                        detail = "${formatGb(adminUsage.r2StorageRolling30d.usedGbMonth)} / ${formatGb(adminUsage.r2StorageRolling30d.limitGbMonth)} GB-month",
-                        exceeded = adminUsage.r2StorageRolling30d.exceeded,
+                    DestructiveButton(
+                        text = "清除本地短期凭证",
+                        onClick = onClearSession,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+
+        item(key = "transcoding") {
+            HighlightCard(
+                title = "分享与转码",
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("原格式优先")
+                        MsSwitch(
+                            checked = draft.passthroughPreferred,
+                            onCheckedChange = { draft = draft.copy(passthroughPreferred = it) },
+                        )
+                    }
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = draft.expireAfterSeconds,
+                        onValueChange = { draft = draft.copy(expireAfterSeconds = it) },
+                        label = { Text("expire_after_seconds") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = whiteOutlinedTextFieldColors(),
+                        singleLine = true,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
+                        listOf(
+                            "fast" to "Fast Share",
+                            "balanced" to "Balanced",
+                            "better" to "Better Quality",
+                        ).forEach { (presetKey, presetLabel) ->
+                            MsFilterChip(
+                                label = presetLabel,
+                                selected = false,
+                                onClick = {
+                                    val preset = SettingsDraft.preset(presetKey)
+                                    draft = draft.copy(
+                                        outputFormat = preset.outputFormat,
+                                        audioCodec = preset.audioCodec,
+                                        bitrateKbps = preset.bitrateKbps.toString(),
+                                        sampleRateHz = preset.sampleRateHz.toString(),
+                                        channels = preset.channels,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = draft.bitrateKbps,
+                        onValueChange = { draft = draft.copy(bitrateKbps = it) },
+                        label = { Text("bitrate_kbps") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = whiteOutlinedTextFieldColors(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = draft.sampleRateHz,
+                        onValueChange = { draft = draft.copy(sampleRateHz = it) },
+                        label = { Text("sample_rate_hz") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = whiteOutlinedTextFieldColors(),
+                        singleLine = true,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(MsTokens.ChipSpacing)) {
+                        MsFilterChip(
+                            label = "单声道",
+                            selected = draft.channels == 1,
+                            onClick = { draft = draft.copy(channels = 1) },
+                        )
+                        MsFilterChip(
+                            label = "双声道",
+                            selected = draft.channels == 2,
+                            onClick = { draft = draft.copy(channels = 2) },
+                        )
+                    }
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = draft.maxDurationSeconds,
+                        onValueChange = { draft = draft.copy(maxDurationSeconds = it) },
+                        label = { Text("max_duration_seconds") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = whiteOutlinedTextFieldColors(),
+                        singleLine = true,
                     )
                     Text(
-                        text = "当前 R2 实时占用：${formatBytes(adminUsage.r2StorageRolling30d.liveBytes)}",
+                        text = "输出：${draft.outputFormat}/${draft.audioCodec}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
+        }
 
-            HighlightCard(
-                title = "远端上限配置",
-                body = if (usageDraft == usageSourceDraft) {
-                    "当前没有未保存修改。可直接填入 Cloudflare 免费额度，也可以按更低阈值提前阻断上传和公开读取。"
-                } else {
-                    "这里保存的是后端侧全局保护阈值，不是本地草稿。"
-                },
-            ) {
-                usageDraft?.let { currentDraft ->
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("启用远端保护")
-                            MsSwitch(
-                                checked = currentDraft.enabled,
-                                onCheckedChange = { usageDraft = currentDraft.copy(enabled = it) },
-                            )
+        if (adminUsage == null) {
+            item(key = "usage-unavailable") {
+                HighlightCard(
+                    title = "远端用量上限",
+                    body = "未获取管理员会话",
+                )
+            }
+        } else {
+            item(key = "usage") {
+                HighlightCard(
+                    title = "当前远端用量",
+                    body = buildString {
+                        if (adminUsage.updatedAt != null) {
+                            append("\n上限更新：${formatDisplayTime(adminUsage.updatedAt)}")
                         }
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = currentDraft.d1RowsReadDailyLimit,
-                            onValueChange = { usageDraft = currentDraft.copy(d1RowsReadDailyLimit = it) },
-                            label = { Text("d1_rows_read_daily_limit") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            colors = whiteOutlinedTextFieldColors(),
-                            singleLine = true,
+                        if (adminUsage.generatedAt.isNotBlank()) {
+                            append("\n统计生成：${formatDisplayTime(adminUsage.generatedAt)}")
+                        }
+                        append("\n统计窗口：${adminUsage.cloudflareReference.rollingWindowDays} 天")
+                    }.trim(),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        UsageMetricLine(
+                            label = "D1 每日读取行数",
+                            detail = "${formatCount(adminUsage.d1RowsReadDaily.used)} / ${formatCount(adminUsage.d1RowsReadDaily.limit)}",
+                            exceeded = adminUsage.d1RowsReadDaily.exceeded,
                         )
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = currentDraft.d1RowsWrittenDailyLimit,
-                            onValueChange = { usageDraft = currentDraft.copy(d1RowsWrittenDailyLimit = it) },
-                            label = { Text("d1_rows_written_daily_limit") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            colors = whiteOutlinedTextFieldColors(),
-                            singleLine = true,
+                        UsageMetricLine(
+                            label = "D1 每日写入行数",
+                            detail = "${formatCount(adminUsage.d1RowsWrittenDaily.used)} / ${formatCount(adminUsage.d1RowsWrittenDaily.limit)}",
+                            exceeded = adminUsage.d1RowsWrittenDaily.exceeded,
                         )
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = currentDraft.d1StorageGbLimit,
-                            onValueChange = { usageDraft = currentDraft.copy(d1StorageGbLimit = it) },
-                            label = { Text("d1_storage_gb_limit") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            colors = whiteOutlinedTextFieldColors(),
-                            singleLine = true,
+                        UsageMetricLine(
+                            label = "D1 总存储",
+                            detail = "${formatGb(adminUsage.d1Storage.usedGb)} GB / ${formatGb(adminUsage.d1Storage.limitGb)} GB",
+                            exceeded = adminUsage.d1Storage.exceeded,
                         )
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = currentDraft.r2ClassARolling30dLimit,
-                            onValueChange = { usageDraft = currentDraft.copy(r2ClassARolling30dLimit = it) },
-                            label = { Text("r2_class_a_rolling_30d_limit") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            colors = whiteOutlinedTextFieldColors(),
-                            singleLine = true,
+                        UsageMetricLine(
+                            label = "R2 Class A（近 30 天）",
+                            detail = "${formatCount(adminUsage.r2ClassARolling30d.used)} / ${formatCount(adminUsage.r2ClassARolling30d.limit)}",
+                            exceeded = adminUsage.r2ClassARolling30d.exceeded,
                         )
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = currentDraft.r2ClassBRolling30dLimit,
-                            onValueChange = { usageDraft = currentDraft.copy(r2ClassBRolling30dLimit = it) },
-                            label = { Text("r2_class_b_rolling_30d_limit") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            colors = whiteOutlinedTextFieldColors(),
-                            singleLine = true,
+                        UsageMetricLine(
+                            label = "R2 Class B（近 30 天）",
+                            detail = "${formatCount(adminUsage.r2ClassBRolling30d.used)} / ${formatCount(adminUsage.r2ClassBRolling30d.limit)}",
+                            exceeded = adminUsage.r2ClassBRolling30d.exceeded,
                         )
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = currentDraft.r2StorageGbMonthLimit,
-                            onValueChange = { usageDraft = currentDraft.copy(r2StorageGbMonthLimit = it) },
-                            label = { Text("r2_storage_gb_month_limit") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            colors = whiteOutlinedTextFieldColors(),
-                            singleLine = true,
+                        UsageMetricLine(
+                            label = "R2 存储（GB-month）",
+                            detail = "${formatGb(adminUsage.r2StorageRolling30d.usedGbMonth)} / ${formatGb(adminUsage.r2StorageRolling30d.limitGbMonth)} GB-month",
+                            exceeded = adminUsage.r2StorageRolling30d.exceeded,
                         )
-                        ActionRow {
-                            PrimaryButton(
-                                text = "保存远端上限",
-                                onClick = { onSaveUsageLimits(currentDraft) },
-                                modifier = Modifier.weight(1f),
+                        Text(
+                            text = "当前 R2 实时占用：${formatBytes(adminUsage.r2StorageRolling30d.liveBytes)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+
+            item(key = "usage-limits") {
+                HighlightCard(
+                    title = "远端上限配置",
+                    body = if (usageDraft == usageSourceDraft) "" else "有未保存修改",
+                ) {
+                    usageDraft?.let { currentDraft ->
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("启用远端保护")
+                                MsSwitch(
+                                    checked = currentDraft.enabled,
+                                    onCheckedChange = { usageDraft = currentDraft.copy(enabled = it) },
+                                )
+                            }
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = currentDraft.d1RowsReadDailyLimit,
+                                onValueChange = { usageDraft = currentDraft.copy(d1RowsReadDailyLimit = it) },
+                                label = { Text("d1_rows_read_daily_limit") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = whiteOutlinedTextFieldColors(),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = currentDraft.d1RowsWrittenDailyLimit,
+                                onValueChange = { usageDraft = currentDraft.copy(d1RowsWrittenDailyLimit = it) },
+                                label = { Text("d1_rows_written_daily_limit") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = whiteOutlinedTextFieldColors(),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = currentDraft.d1StorageGbLimit,
+                                onValueChange = { usageDraft = currentDraft.copy(d1StorageGbLimit = it) },
+                                label = { Text("d1_storage_gb_limit") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                colors = whiteOutlinedTextFieldColors(),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = currentDraft.r2ClassARolling30dLimit,
+                                onValueChange = { usageDraft = currentDraft.copy(r2ClassARolling30dLimit = it) },
+                                label = { Text("r2_class_a_rolling_30d_limit") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = whiteOutlinedTextFieldColors(),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = currentDraft.r2ClassBRolling30dLimit,
+                                onValueChange = { usageDraft = currentDraft.copy(r2ClassBRolling30dLimit = it) },
+                                label = { Text("r2_class_b_rolling_30d_limit") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                colors = whiteOutlinedTextFieldColors(),
+                                singleLine = true,
+                            )
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = currentDraft.r2StorageGbMonthLimit,
+                                onValueChange = { usageDraft = currentDraft.copy(r2StorageGbMonthLimit = it) },
+                                label = { Text("r2_storage_gb_month_limit") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                colors = whiteOutlinedTextFieldColors(),
+                                singleLine = true,
+                            )
+                            ActionRow {
+                                PrimaryButton(
+                                    text = "保存远端上限",
+                                    onClick = { onSaveUsageLimits(currentDraft) },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = currentDraft != usageSourceDraft,
+                                )
+                                SecondaryButton(
+                                    text = "填入免费额度",
+                                    onClick = {
+                                        usageDraft = UsageLimitsDraft.fromReference(
+                                            adminUsage.cloudflareReference,
+                                            enabled = currentDraft.enabled,
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            TextActionButton(
+                                text = "撤销远端修改",
+                                onClick = { usageDraft = usageSourceDraft },
                                 enabled = currentDraft != usageSourceDraft,
                             )
-                            SecondaryButton(
-                                text = "填入免费额度",
-                                onClick = {
-                                    usageDraft = UsageLimitsDraft.fromReference(
-                                        adminUsage.cloudflareReference,
-                                        enabled = currentDraft.enabled,
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
                         }
-                        TextActionButton(
-                            text = "撤销远端修改",
-                            onClick = { usageDraft = usageSourceDraft },
-                            enabled = currentDraft != usageSourceDraft,
-                        )
                     }
                 }
             }
         }
 
-        HighlightCard(
-            title = "导出与导入",
-            body = "导出的 JSON 默认包含密码、短期凭证和认证日志。保存前请确认文件位置可信。",
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionRow {
-                    SecondaryButton(
-                        text = "导出配置",
-                        onClick = onExportConfig,
-                        modifier = Modifier.weight(1f),
-                    )
-                    PrimaryButton(
-                        text = "导入并保留安装 ID",
-                        onClick = onImportConfigPreserveId,
-                        modifier = Modifier.weight(1f),
+        item(key = "config-transfer") {
+            HighlightCard(
+                title = "导出与导入",
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionRow {
+                        SecondaryButton(
+                            text = "导出配置",
+                            onClick = onExportConfig,
+                            modifier = Modifier.weight(1f),
+                        )
+                        PrimaryButton(
+                            text = "导入并保留安装 ID",
+                            onClick = onImportConfigPreserveId,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    DestructiveButton(
+                        text = "导入并覆盖安装 ID",
+                        onClick = onImportConfigReplaceId,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                DestructiveButton(
-                    text = "导入并覆盖安装 ID",
-                    onClick = onImportConfigReplaceId,
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
         }
     }
 }
 
-@Composable
-private fun ShareSection(
+private fun LazyListScope.shareSection(
+    sectionKey: String,
     title: String,
     items: List<ShareItemDto>,
     onTerminate: (String) -> Unit,
 ) {
-    val clipboardManager = LocalClipboardManager.current
-    HighlightCard(
-        title = title,
-        body = if (items.isEmpty()) "暂无记录。" else "共 ${items.size} 条。",
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items.forEach { item ->
-                Card(
-                    shape = RoundedCornerShape(MsTokens.RadiusCardInner),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = shareItemContainerAlpha),
-                        contentColor = musicShareTextColor,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(item.title, fontWeight = FontWeight.SemiBold)
-                        Text("${item.artist.ifBlank { "未知艺术家" }} · ${item.album.ifBlank { "未知专辑" }}")
-                        Text(
-                            "状态：${
-                                formatShareExpiryStatus(
-                                    status = item.status,
-                                    remainingSeconds = item.remainingSeconds,
-                                    expiresAt = item.expiresAt,
-                                )
-                            }",
+    item(key = "$sectionKey-header", contentType = "share-header") {
+        HighlightCard(
+            title = title,
+            body = if (items.isEmpty()) "暂无记录。" else "共 ${items.size} 条。",
+        )
+    }
+    items(items, key = { "$sectionKey-${it.shareCode}" }, contentType = { "share" }) { item ->
+        val clipboardManager = LocalClipboardManager.current
+        Card(
+            shape = RoundedCornerShape(MsTokens.RadiusCardInner),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = shareItemContainerAlpha),
+                contentColor = musicShareTextColor,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(item.title, fontWeight = FontWeight.SemiBold)
+                Text("${item.artist.ifBlank { "未知艺术家" }} · ${item.album.ifBlank { "未知专辑" }}")
+                Text(
+                    "状态：${
+                        formatShareExpiryStatus(
+                            status = item.status,
+                            remainingSeconds = item.remainingSeconds,
+                            expiresAt = item.expiresAt,
                         )
-                        Text("过期：${formatDisplayTime(item.expiresAt)}")
-                        HorizontalDivider(color = musicShareTextColor.copy(alpha = controlContainerAlpha))
-                        ActionRow {
-                            SecondaryButton(
-                                text = "复制共享链接",
-                                onClick = { clipboardManager.setText(AnnotatedString(item.shareUrl)) },
-                                modifier = Modifier.weight(1f),
-                                compact = true,
-                                maxLines = 2,
-                            )
-                            DestructiveButton(
-                                text = "结束共享",
-                                onClick = { onTerminate(item.shareCode) },
-                                modifier = Modifier.weight(1f),
-                                compact = true,
-                                maxLines = 2,
-                            )
-                        }
-                    }
+                    }",
+                )
+                Text("过期：${formatDisplayTime(item.expiresAt)}")
+                HorizontalDivider(color = musicShareTextColor.copy(alpha = controlContainerAlpha))
+                ActionRow {
+                    SecondaryButton(
+                        text = "复制共享链接",
+                        onClick = { clipboardManager.setText(AnnotatedString(item.shareUrl)) },
+                        modifier = Modifier.weight(1f),
+                        compact = true,
+                        maxLines = 2,
+                    )
+                    DestructiveButton(
+                        text = "结束共享",
+                        onClick = { onTerminate(item.shareCode) },
+                        modifier = Modifier.weight(1f),
+                        compact = true,
+                        maxLines = 2,
+                    )
                 }
             }
         }
@@ -1166,7 +1159,7 @@ private fun UsageMetricLine(
 @Composable
 private fun HighlightCard(
     title: String,
-    body: String,
+    body: String = "",
     content: @Composable (() -> Unit)? = null,
 ) {
     Card(

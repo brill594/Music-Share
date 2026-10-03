@@ -79,7 +79,8 @@ class ShareWidgetSystemContractTest {
         assertTrue(theme.contains("albumArtSeedArgb"))
         assertTrue(theme.contains("deriveAlbumArtTokens"))
         assertTrue(screen.contains("AlbumArtworkBackground"))
-        assertTrue(screen.contains("Modifier.blur"))
+        assertTrue(screen.contains("boxBlur(decoded, backgroundBlurRadius)"))
+        assertFalse(screen.contains("Modifier.blur"))
         assertTrue(activity.contains("artworkColorArgb"))
     }
 }
