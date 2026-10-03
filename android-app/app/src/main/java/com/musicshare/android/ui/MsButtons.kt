@@ -35,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 object MsTokens {
-    val RadiusControl = 10.dp
+    val RadiusControl = 20.dp
     val RadiusCard = 20.dp
     val RadiusCardInner = 16.dp
     val Height = 48.dp
@@ -51,7 +51,8 @@ object MsTokens {
     val DestructivePlate = Color(0xFF4A1A1E)
     val DestructiveLabel = Color(0xFFFF8A85)
 
-    const val SecondaryContainerAlpha = 0.14f
+    const val PrimaryContainerAlpha = 0.78f
+    const val SecondaryContainerAlpha = 0.11f
     const val SelectedChipAlpha = 0.22f
     const val UnselectedChipLabelAlpha = 0.70f
     const val StatusLabelAlpha = 0.85f
@@ -101,7 +102,7 @@ fun PrimaryButton(
         elevation = MsTokens.FlatElevation,
         contentPadding = PaddingValues(horizontal = MsTokens.ContentPaddingH),
         colors = ButtonDefaults.buttonColors(
-            containerColor = scheme.primary,
+            containerColor = scheme.primary.copy(alpha = MsTokens.PrimaryContainerAlpha),
             contentColor = scheme.onPrimary,
             disabledContainerColor = scheme.primary.copy(alpha = MsTokens.DisabledContainerAlpha),
             disabledContentColor = scheme.onPrimary.copy(alpha = MsTokens.DisabledForegroundAlpha),
@@ -167,7 +168,7 @@ fun DestructiveButton(
             horizontal = if (compact) MsTokens.ContentPaddingHCompact else MsTokens.ContentPaddingH,
         ),
         colors = ButtonDefaults.buttonColors(
-            containerColor = MsTokens.DestructivePlate,
+            containerColor = MsTokens.DestructivePlate.copy(alpha = 0.72f),
             contentColor = MsTokens.DestructiveLabel,
             disabledContainerColor = MsTokens.DestructivePlate.copy(alpha = MsTokens.DisabledContainerAlpha),
             disabledContentColor = MsTokens.DestructiveLabel.copy(alpha = MsTokens.DisabledForegroundAlpha),

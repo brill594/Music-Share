@@ -6,7 +6,6 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.webkit.MimeTypeMap
-import com.musicshare.android.artwork.AlbumArtworkRepository
 import com.musicshare.android.data.AppStateStore
 import com.musicshare.android.data.CurrentTrackSnapshot
 import com.musicshare.android.data.TranscodeConfig
@@ -29,7 +28,6 @@ class ShareCoordinator(
     private val stateStore: AppStateStore,
     private val backendRepository: MusicShareBackendRepository,
     private val documentUriResolver: DocumentUriResolver,
-    private val albumArtworkRepository: AlbumArtworkRepository,
 ) {
     private val shareMutex = Mutex()
     private val audioTranscoder = FfmpegAudioTranscoder(context)
@@ -90,23 +88,6 @@ class ShareCoordinator(
             }
             throw error
         }
-    }
-
-    suspend fun refreshTrackResolution() {
-        val state = stateStore.read()
-        val latest = state.latestTrack ?: return
-        val resolved = resolveTrack(latest, state.musicTreeUri) ?: return
-        val themed = if (albumArtworkRepository.hasUsableArtwork(resolved)) {
-            resolved
-        } else {
-            albumArtworkRepository.extract(resolved)?.let {
-                resolved.copy(
-                    artUri = it.artUri,
-                    artworkColorArgb = it.artworkColorArgb,
-                )
-            } ?: resolved.copy(artUri = "", artworkColorArgb = 0L)
-        }
-        stateStore.update { it.copy(latestTrack = themed) }
     }
 
     private suspend fun resolveTrack(

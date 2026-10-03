@@ -42,7 +42,6 @@ class AppContainer(private val application: Application) {
         stateStore = stateStore,
         backendRepository = backendRepository,
         documentUriResolver = documentUriResolver,
-        albumArtworkRepository = albumArtworkRepository,
     )
     val powerampBroadcastHandler = PowerampBroadcastHandler(
         context = application,

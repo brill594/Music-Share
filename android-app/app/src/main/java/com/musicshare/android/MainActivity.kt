@@ -98,6 +98,11 @@ class MainActivity : ComponentActivity() {
         showCurrentShareNotification()
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.refreshCurrentTrack()
+    }
+
     private fun startShareWithNotificationPrompt() {
         if (!canPostNotifications()) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)

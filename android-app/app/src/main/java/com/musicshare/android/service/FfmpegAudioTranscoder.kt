@@ -1,6 +1,7 @@
 package com.musicshare.android.service
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
@@ -35,7 +36,7 @@ class FfmpegAudioTranscoder(
         ).also { copySourceToLocalFile(sourceUri, it) }
         val outputFile = File.createTempFile(
             "music-share-artwork-${UUID.randomUUID()}",
-            ".png",
+            ".img",
             context.cacheDir,
         )
         val arguments = listOf(
@@ -50,7 +51,9 @@ class FfmpegAudioTranscoder(
             "-frames:v",
             "1",
             "-c:v",
-            "png",
+            "copy",
+            "-f",
+            "image2",
             outputFile.absolutePath,
         )
         Log.i(
@@ -106,10 +109,18 @@ class FfmpegAudioTranscoder(
                 return@withContext null
             }
 
-            Log.i(logTag, "Artwork extraction completed outputBytes=${outputFile.length()}")
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(outputFile.absolutePath, bounds)
+            val mimeType = bounds.outMimeType
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || mimeType == null) {
+                outputFile.delete()
+                Log.w(logTag, "Extracted artwork is not a supported image")
+                return@withContext null
+            }
+            Log.i(logTag, "Artwork extraction completed outputBytes=${outputFile.length()} mime=$mimeType")
             ExtractedArtwork(
                 file = outputFile,
-                mimeType = "image/png",
+                mimeType = mimeType,
             )
         } finally {
             if (ownsInput) {

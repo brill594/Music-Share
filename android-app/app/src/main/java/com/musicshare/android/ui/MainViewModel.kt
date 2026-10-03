@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 
 data class DashboardUiState(
     val appState: PersistedAppState = PersistedAppState(),
@@ -68,10 +70,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = DashboardUiState(),
         )
 
+    private var trackRefreshJob: Job? = null
+
     init {
         viewModelScope.launch {
             container.stateStore.ensureClientInstallId()
-            container.shareCoordinator.refreshTrackResolution()
+        }
+    }
+
+    fun refreshCurrentTrack() {
+        trackRefreshJob?.cancel()
+        trackRefreshJob = viewModelScope.launch {
+            try {
+                container.powerampBroadcastHandler.refreshCurrentTrack()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w("MusicSharePoweramp", "Foreground track recovery failed", error)
+            }
         }
     }
 
@@ -80,7 +96,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             container.stateStore.update { state ->
                 state.copy(musicTreeUri = uri.toString())
             }
-            container.shareCoordinator.refreshTrackResolution()
+            container.powerampBroadcastHandler.refreshCurrentTrack()
             messages.tryEmit("已保存音乐目录授权。")
         }
     }
@@ -199,7 +215,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             runCatching {
                 container.configTransferManager.importFrom(uri, preserveInstallId)
-                container.shareCoordinator.refreshTrackResolution()
+                container.powerampBroadcastHandler.refreshCurrentTrack()
             }.onSuccess {
                 refreshShares()
                 messages.tryEmit(if (preserveInstallId) "配置已导入，保留了当前安装 ID。" else "配置已导入。")

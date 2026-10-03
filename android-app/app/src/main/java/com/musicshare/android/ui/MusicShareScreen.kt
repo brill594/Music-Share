@@ -5,7 +5,29 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,11 +55,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -106,6 +124,11 @@ fun MusicShareScreen(
     onClearSession: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val navigationPosition by animateFloatAsState(
+        targetValue = selectedTab.toFloat(),
+        animationSpec = tween(220),
+        label = "Navigation position",
+    )
     var shareManagementAutoLoaded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(selectedTab) {
         if (selectedTab == shareManagementTabIndex && !shareManagementAutoLoaded) {
@@ -117,41 +140,71 @@ fun MusicShareScreen(
     AlbumArtworkBackground(artUri = uiState.appState.latestTrack?.artUri.orEmpty()) {
         Scaffold(
             containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    title = { Text("Music Share") },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        titleContentColor = musicShareTextColor,
-                        navigationIconContentColor = musicShareTextColor,
-                        actionIconContentColor = musicShareTextColor,
-                    ),
-                )
+            bottomBar = {
+                Box(
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding()
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(
+                        modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.Black.copy(alpha = 0.48f))
+                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(24.dp))
+                            .padding(6.dp)
+                            .drawBehind {
+                                val gap = 4.dp.toPx()
+                                val itemWidth = (size.width - gap * 2) / 3
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    topLeft = Offset(navigationPosition * (itemWidth + gap), 0f),
+                                    size = Size(itemWidth, size.height),
+                                    cornerRadius = CornerRadius(18.dp.toPx()),
+                                )
+                            }
+                            .selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        listOf("当前歌曲", "分享管理", "设置").forEachIndexed { index, label ->
+                            val selected = selectedTab == index
+                            val labelColor by animateColorAsState(
+                                targetValue = musicShareTextColor.copy(alpha = if (selected) 1f else 0.68f),
+                                animationSpec = tween(180),
+                                label = "Navigation label",
+                            )
+                            Box(
+                                modifier = Modifier.weight(1f).clip(RoundedCornerShape(18.dp))
+                                    .selectable(selected = selected, role = Role.Tab, onClick = { selectedTab = index })
+                                    .heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    label,
+                                    color = labelColor,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                )
+                            }
+                        }
+                    }
+                }
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
             CompositionLocalProvider(LocalContentColor provides musicShareTextColor) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                ) {
-                    TabRow(
-                        selectedTabIndex = selectedTab,
-                        containerColor = Color.Transparent,
-                        contentColor = musicShareTextColor,
-                    ) {
-                        listOf("当前歌曲", "分享管理", "设置").forEachIndexed { index, label ->
-                            Tab(
-                                selected = selectedTab == index,
-                                onClick = { selectedTab = index },
-                                selectedContentColor = musicShareTextColor,
-                                unselectedContentColor = musicShareTextColor,
-                                text = { Text(label) },
+                AnimatedContent(
+                    targetState = selectedTab,
+                    modifier = Modifier.fillMaxSize().padding(padding).clipToBounds(),
+                    transitionSpec = {
+                        val direction = if (targetState > initialState) 1 else -1
+                        (slideInHorizontally(tween(220)) { direction * it / 12 } + fadeIn(tween(180)))
+                            .togetherWith(
+                                slideOutHorizontally(tween(220)) { -direction * it / 12 } + fadeOut(tween(150)),
                             )
-                        }
-                    }
-                    when (selectedTab) {
+                    },
+                    label = "Page transition",
+                ) { tab ->
+                    when (tab) {
                         0 -> CurrentTrackTab(
                             appState = uiState.appState,
                             onShareNow = onShareNow,

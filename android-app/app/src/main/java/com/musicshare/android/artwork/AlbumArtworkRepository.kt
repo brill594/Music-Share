@@ -4,10 +4,15 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.util.Log
+import com.musicshare.android.service.FfmpegAudioTranscoder
+import kotlinx.coroutines.CancellationException
 import com.musicshare.android.data.CurrentTrackSnapshot
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class AlbumArtwork(
@@ -16,17 +21,28 @@ data class AlbumArtwork(
 )
 
 class AlbumArtworkRepository(private val context: Context) {
+    private val writeMutex = Mutex()
+
     suspend fun extract(track: CurrentTrackSnapshot): AlbumArtwork? = withContext(Dispatchers.IO) {
         runCatching {
             if (!track.isResolvable || track.documentUri.isBlank()) return@runCatching null
             val sourceUri = Uri.parse(track.documentUri)
-            val artworkBytes = readEmbeddedArtwork(sourceUri) ?: return@runCatching null
+            val artworkBytes = readEmbeddedArtwork(sourceUri) ?: run {
+                Log.d(logTag, "Trying FFmpeg artwork fallback")
+                val extracted = FfmpegAudioTranscoder(context).extractEmbeddedArtwork(sourceUri)
+                    ?: return@runCatching null
+                try { extracted.file.readBytes() } finally { extracted.file.delete() }
+            }
             val seed = decodeSeed(artworkBytes)
-            val file = writeCurrentArtwork(track, artworkBytes) ?: return@runCatching null
+            if (seed == 0L) return@runCatching null
+            val file = writeMutex.withLock { writeCurrentArtwork(track, artworkBytes) }
             AlbumArtwork(
                 artUri = Uri.fromFile(file).toString(),
                 artworkColorArgb = seed,
             )
+        }.onFailure { error ->
+            if (error is CancellationException) throw error
+            Log.w(logTag, "Artwork extraction failed", error)
         }.getOrNull()
     }
 
@@ -35,7 +51,11 @@ class AlbumArtworkRepository(private val context: Context) {
     }
 
     private fun canRead(artUri: String): Boolean = runCatching {
-        context.contentResolver.openInputStream(Uri.parse(artUri))?.use { true } == true
+        context.contentResolver.openInputStream(Uri.parse(artUri))?.use { input ->
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeStream(input, null, bounds)
+            bounds.outWidth > 0 && bounds.outHeight > 0
+        } == true
     }.getOrDefault(false)
 
     private fun readEmbeddedArtwork(sourceUri: Uri): ByteArray? {
@@ -43,7 +63,8 @@ class AlbumArtworkRepository(private val context: Context) {
         return try {
             retriever.setDataSource(context, sourceUri)
             retriever.embeddedPicture
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.w(logTag, "System artwork extraction failed", error)
             null
         } finally {
             runCatching { retriever.release() }
@@ -69,23 +90,21 @@ class AlbumArtworkRepository(private val context: Context) {
         }
     }
 
-    private fun writeCurrentArtwork(track: CurrentTrackSnapshot, bytes: ByteArray): File? {
+    private fun writeCurrentArtwork(track: CurrentTrackSnapshot, bytes: ByteArray): File {
         val directory = File(context.cacheDir, artworkCacheDir).apply { mkdirs() }
-        val target = File(directory, "current-${cacheKey(track)}.img")
-        directory.listFiles()?.forEach { file ->
-            if (file != target) file.delete()
+        // A new URI also makes Compose retry after a missing/corrupt cache entry.
+        val target = File.createTempFile("current-${cacheKey(track)}-", ".img", directory)
+        try {
+            FileOutputStream(target).use { output -> output.write(bytes) }
+        } catch (error: Exception) {
+            target.delete()
+            throw error
         }
-        val staging = File(directory, "${target.name}.tmp")
-        FileOutputStream(staging).use { output -> output.write(bytes) }
-        if (staging.renameTo(target)) {
-            return target
-        }
-        target.delete()
-        if (staging.renameTo(target)) {
-            return target
-        }
-        staging.delete()
-        return null
+        // Never remove another in-flight track's freshly published artwork.
+        val expiry = System.currentTimeMillis() - 24 * 60 * 60 * 1_000L
+        directory.listFiles()?.filter { it != target && it.lastModified() < expiry }
+            ?.forEach { it.delete() }
+        return target
     }
 
     private fun calculateSampleSize(width: Int, height: Int, maxEdge: Int): Int {
@@ -106,6 +125,7 @@ class AlbumArtworkRepository(private val context: Context) {
     }
 
     private companion object {
+        const val logTag = "MusicShareArtwork"
         const val artworkCacheDir = "current-album-artwork"
         const val maxSeedBitmapEdge = 128
     }
