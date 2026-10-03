@@ -50,12 +50,16 @@ class ShareWidgetSystemContractTest {
     }
 
     @Test
-    fun launcherIconUsesGrayPalette() {
-        val background = File("src/main/res/values/ic_launcher_background.xml").readText()
+    fun launcherIconIncludesPortraitForAdaptiveAndDensityVariants() {
         val foreground = File("src/main/res/drawable/ic_launcher_foreground.xml").readText()
-
-        assertTrue(background.contains("#2E2E2E"))
-        assertTrue(foreground.contains("#BDBDBD"))
+        assertTrue(foreground.contains("@drawable/ic_launcher_portrait"))
+        assertTrue(foreground.contains("android:inset=\"16.666667%\""))
+        val sizes = mapOf("mdpi" to 48, "hdpi" to 72, "xhdpi" to 96, "xxhdpi" to 144, "xxxhdpi" to 192)
+        sizes.forEach { (density, size) ->
+            val image = java.nio.ByteBuffer.wrap(File("src/main/res/mipmap-$density/ic_launcher.png").readBytes())
+            assertTrue(image.getInt(0) == 0x89504E47.toInt())
+            assertTrue("Launcher icon must be square at $density", image.getInt(16) == size && image.getInt(20) == size)
+        }
     }
 
     @Test
