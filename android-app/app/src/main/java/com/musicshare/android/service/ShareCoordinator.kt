@@ -272,7 +272,7 @@ class ShareCoordinator(
         return coverFile to coverMime
     }
 
-    private fun readMetadata(
+    internal fun readMetadata(
         sourceUri: Uri,
         fallbackTrack: CurrentTrackSnapshot,
         maxDurationLimitMs: Long,
@@ -281,12 +281,16 @@ class ShareCoordinator(
         return runCatching {
             retriever.setDataSource(context, sourceUri)
             ExtractedMetadata(
-                title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE).orEmpty()
-                    .ifBlank { fallbackTrack.title },
-                artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST).orEmpty()
-                    .ifBlank { fallbackTrack.artist },
-                album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM).orEmpty()
-                    .ifBlank { fallbackTrack.album },
+                // Match the labels shown to the user: Poweramp handles tag encodings that the system may misread.
+                title = fallbackTrack.title.ifBlank {
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE).orEmpty()
+                },
+                artist = fallbackTrack.artist.ifBlank {
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST).orEmpty()
+                },
+                album = fallbackTrack.album.ifBlank {
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM).orEmpty()
+                },
                 durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
                     ?: fallbackTrack.durationMs,
                 coverBytes = retriever.embeddedPicture,
@@ -407,7 +411,7 @@ class ShareCoordinator(
         }
     }
 
-    private data class ExtractedMetadata(
+    internal data class ExtractedMetadata(
         val title: String,
         val artist: String,
         val album: String,

@@ -41,7 +41,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -417,33 +416,35 @@ private fun NowPlayingSection(
             artUri = track.artUri,
             modifier = Modifier.fillMaxWidth(),
         )
-        Plate {
-            Text(
-                track.displayTitle(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        Plate {
-            Text(
-                "${track.artist.ifBlank { "未知艺术家" }} · ${track.album.ifBlank { "未知专辑" }}",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        Plate(verticalPadding = 6.dp) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Column(verticalArrangement = Arrangement.spacedBy(MsTokens.RowSpacing / 3)) {
+            Plate(verticalPadding = 10.dp / 3) {
                 Text(
-                    "时长 ${formatDurationLabel(track.durationMs)}",
-                    style = MaterialTheme.typography.bodySmall,
+                    track.displayTitle(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                 )
-                StatusChip(
-                    label = if (track.isResolvable) "可访问" else "待重新解析",
-                    good = track.isResolvable,
-                    compact = true,
+            }
+            Plate {
+                Text(
+                    "${track.artist.ifBlank { "未知艺术家" }} · ${track.album.ifBlank { "未知专辑" }}",
+                    style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+            Plate(verticalPadding = 3.dp) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "时长 ${formatDurationLabel(track.durationMs)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    StatusChip(
+                        label = if (track.isResolvable) "可访问" else "待重新解析",
+                        good = track.isResolvable,
+                        compact = true,
+                    )
+                }
             }
         }
         PrimaryButton(
@@ -503,14 +504,14 @@ private fun ShareLinkBox(shareUrl: String) {
 @Composable
 private fun Plate(
     modifier: Modifier = Modifier,
-    verticalPadding: Dp = 10.dp,
+    verticalPadding: Dp = 5.dp,
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier = modifier
             .background(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = highlightCardContainerAlpha),
-                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = highlightCardContainerAlpha * 0.5f),
+                shape = RoundedCornerShape(percent = 33),
             )
             .padding(horizontal = 18.dp, vertical = verticalPadding),
     ) {
